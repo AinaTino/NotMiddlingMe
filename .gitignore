@@ -13,5 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
-/app/src/main/java/com/arda/stopmiddlingme/NotMiddlingMe_Guide_Complet.md
+/app/src/main/java/com/arda/stopmiddlingme/StopMiddlingMe_Guide_Complet.md
 /AGENTS.md
+/app/src/main/java/com/arda/stopmiddlingme/NotMiddlingMe_Guide_Complet.md

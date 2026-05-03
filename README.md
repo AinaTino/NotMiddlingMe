@@ -1,4 +1,4 @@
-# NotMiddlingMe
+# StopMiddlingMe
 > *Because Android won’t let you sniff packets like a real hacker.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

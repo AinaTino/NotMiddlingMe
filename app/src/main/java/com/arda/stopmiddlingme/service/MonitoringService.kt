@@ -174,7 +174,7 @@ class MonitoringService : Service() {
         manager.createNotificationChannel(channel)
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("NotMiddlingMe")
+            .setContentTitle("StopMiddlingMe")
             .setContentText("Surveillance du réseau en cours...")
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setOngoing(true)
