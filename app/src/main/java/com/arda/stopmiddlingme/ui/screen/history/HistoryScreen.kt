@@ -14,9 +14,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.arda.stopmiddlingme.R
 import com.arda.stopmiddlingme.data.db.entity.AlertSession
 import com.arda.stopmiddlingme.domain.model.AlertLevel
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
@@ -40,14 +42,14 @@ fun HistoryContent(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Historique des alertes") })
+            TopAppBar(title = { Text(stringResource(R.string.history_title)) })
         }
     ) { padding ->
         if (sessions.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
-                    Text("Aucune alerte enregistrée", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.outline)
+                    Text(stringResource(R.string.no_history), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.outline)
                 }
             }
         } else {
@@ -107,7 +109,7 @@ fun HistoryItem(session: AlertSession) {
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "Score: ${session.totalScore}",
+                    text = stringResource(R.string.score_label, session.totalScore),
                     style = MaterialTheme.typography.labelLarge,
                     color = statusColor
                 )

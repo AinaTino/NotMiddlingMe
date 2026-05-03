@@ -15,9 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.arda.stopmiddlingme.R
 import com.arda.stopmiddlingme.domain.model.AlertLevel
 import com.arda.stopmiddlingme.ui.component.ScoreGauge
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
@@ -76,7 +78,7 @@ fun DashboardContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("StopMiddlingMe") },
+                title = { Text(stringResource(R.string.app_name)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -114,7 +116,7 @@ fun DashboardContent(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isVpnRunning) "Protection Active" else "Protection Désactivée",
+                        text = if (isVpnRunning) stringResource(R.string.protection_active) else stringResource(R.string.protection_disabled),
                         style = MaterialTheme.typography.titleMedium,
                         color = if (isVpnRunning) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
                     )
@@ -130,13 +132,13 @@ fun DashboardContent(
                 colors = if (isVpnRunning) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary) 
                          else ButtonDefaults.buttonColors()
             ) {
-                Text(if (isVpnRunning) "Arrêter la surveillance" else "Lancer la surveillance")
+                Text(if (isVpnRunning) stringResource(R.string.stop_monitoring) else stringResource(R.string.start_monitoring))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Signaux en temps réel", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.real_time_signals), style = MaterialTheme.typography.titleMedium)
                 if (activeSignals.isNotEmpty()) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Badge(containerColor = MaterialTheme.colorScheme.error) {
@@ -150,7 +152,7 @@ fun DashboardContent(
             if (activeSignals.isEmpty()) {
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(
-                        "Aucune anomalie détectée",
+                        stringResource(R.string.no_anomalies),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )

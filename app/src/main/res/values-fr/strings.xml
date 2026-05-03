@@ -1,0 +1,42 @@
+<resources>
+    <string name="app_name">StopMiddlingMe</string>
+    <string name="nav_home">Accueil</string>
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_history">Historique</string>
+    <string name="nav_settings">Paramètres</string>
+
+    <string name="protection_active">Protection Active</string>
+    <string name="protection_disabled">Protection Désactivée</string>
+    <string name="start_monitoring">Lancer la surveillance</string>
+    <string name="stop_monitoring">Arrêter la surveillance</string>
+    <string name="real_time_signals">Signaux en temps réel</string>
+    <string name="no_anomalies">Aucune anomalie détectée</string>
+
+    <string name="general_config">Configuration Générale</string>
+    <string name="dns_monitoring">Surveillance DNS active</string>
+    <string name="dns_monitoring_desc">Vérifier périodiquement le détournement DNS</string>
+    <string name="ssl_strip_detection">Détection SSL Strip</string>
+    <string name="ssl_strip_desc">Surveiller le port 80 pour les tentatives de downgrade HSTS</string>
+    <string name="real_time_notifications">Notifications en temps réel</string>
+    <string name="notifications_desc">Afficher les alertes dans le volet système</string>
+    <string name="language">Langue</string>
+    <string name="language_en">Anglais</string>
+    <string name="language_fr">Français</string>
+    <string name="system_default">Langue du système</string>
+
+    <string name="scanner_title">Scanner LAN</string>
+    <string name="scanning_network">Analyse du réseau…</string>
+    <string name="identifying_devices">Identification des appareils connectés</string>
+    <string name="no_devices">Aucun appareil détecté</string>
+    <string name="ensure_wifi">Assurez-vous d\'être connecté au WiFi</string>
+    <string name="rescan">Relancer le scan</string>
+    <string name="devices_found">Appareils trouvés (%1$d)</string>
+    <string name="you">Vous</string>
+
+    <string name="history_title">Historique des alertes</string>
+    <string name="no_history">Aucune alerte enregistrée</string>
+    <string name="score_label">Score : %1$d</string>
+
+    <string name="about">À propos</string>
+    <string name="about_desc">Outil de détection MITM pour Android</string>
+</resources>

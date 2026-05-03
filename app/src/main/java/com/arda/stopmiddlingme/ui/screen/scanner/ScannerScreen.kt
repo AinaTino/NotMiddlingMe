@@ -15,9 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.tooling.preview.Preview
+import com.arda.stopmiddlingme.R
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
 import com.arda.stopmiddlingme.domain.model.LanDevice
 
@@ -56,7 +58,7 @@ fun ScannerContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scanner LAN") },
+                title = { Text(stringResource(R.string.scanner_title)) },
                 actions = {
                     IconButton(onClick = onScanClick, enabled = !isScanning) {
                         Icon(
@@ -88,12 +90,12 @@ fun ScannerContent(
                             CircularProgressIndicator(modifier = Modifier.size(48.dp))
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "Analyse du réseau...",
+                                stringResource(R.string.scanning_network),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "Identification des appareils connectés",
+                                stringResource(R.string.identifying_devices),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -110,9 +112,9 @@ fun ScannerContent(
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Aucun appareil détecté", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.no_devices), style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Assurez-vous d'être connecté au WiFi",
+                                stringResource(R.string.ensure_wifi),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -121,7 +123,7 @@ fun ScannerContent(
                                 modifier = Modifier.padding(top = 24.dp),
                                 shape = MaterialTheme.shapes.medium
                             ) {
-                                Text("Relancer le scan")
+                                Text(stringResource(R.string.rescan))
                             }
                         }
                     }
@@ -134,7 +136,7 @@ fun ScannerContent(
                     ) {
                         item {
                             Text(
-                                "Appareils trouvés (${devices.size})",
+                                text = stringResource(R.string.devices_found, devices.size),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 8.dp)
@@ -197,7 +199,7 @@ fun DeviceItem(device: LanDevice) {
                     Text(text = device.ip, style = MaterialTheme.typography.titleMedium)
                     if (device.isSelf) {
                         Text(
-                            " (Vous)",
+                            text = " (${stringResource(R.string.you)})",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 4.dp)

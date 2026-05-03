@@ -1,3 +1,42 @@
 <resources>
     <string name="app_name">StopMiddlingMe</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="protection_active">Protection Active</string>
+    <string name="protection_disabled">Protection Disabled</string>
+    <string name="start_monitoring">Start Monitoring</string>
+    <string name="stop_monitoring">Stop Monitoring</string>
+    <string name="real_time_signals">Real-time Signals</string>
+    <string name="no_anomalies">No anomalies detected</string>
+
+    <string name="general_config">General Configuration</string>
+    <string name="dns_monitoring">Active DNS Monitoring</string>
+    <string name="dns_monitoring_desc">Periodically check for DNS hijacking</string>
+    <string name="ssl_strip_detection">SSL Strip Detection</string>
+    <string name="ssl_strip_desc">Monitor port 80 for HSTS downgrade attempts</string>
+    <string name="real_time_notifications">Real-time Notifications</string>
+    <string name="notifications_desc">Show alerts in system drawer</string>
+    <string name="language">Language</string>
+    <string name="language_en">English</string>
+    <string name="language_fr">French</string>
+    <string name="system_default">System Default</string>
+
+    <string name="scanner_title">LAN Scanner</string>
+    <string name="scanning_network">Scanning network…</string>
+    <string name="identifying_devices">Identifying connected devices</string>
+    <string name="no_devices">No devices detected</string>
+    <string name="ensure_wifi">Ensure you are connected to WiFi</string>
+    <string name="rescan">Rescan</string>
+    <string name="devices_found">Devices found (%1$d)</string>
+    <string name="you">You</string>
+
+    <string name="history_title">Alert History</string>
+    <string name="no_history">No alerts recorded</string>
+    <string name="score_label">Score: %1$d</string>
+
+    <string name="about">About</string>
+    <string name="about_desc">MITM Detection Tool for Android</string>
 </resources>

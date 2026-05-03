@@ -23,11 +23,14 @@ import com.arda.stopmiddlingme.ui.screen.settings.SettingsScreen
 
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
 
-sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
-    object Dashboard : Screen("dashboard", "Home", Icons.Default.Home)
-    object Scanner : Screen("scanner", "Scanner", Icons.Default.Search)
-    object History : Screen("history", "History", Icons.Default.History)
-    object Settings : Screen("settings", "Settings", Icons.Default.Settings)
+import androidx.compose.ui.res.stringResource
+import com.arda.stopmiddlingme.R
+
+sealed class Screen(val route: String, val labelResId: Int, val icon: ImageVector) {
+    object Dashboard : Screen("dashboard", R.string.nav_home, Icons.Default.Home)
+    object Scanner : Screen("scanner", R.string.nav_scanner, Icons.Default.Search)
+    object History : Screen("history", R.string.nav_history, Icons.Default.History)
+    object Settings : Screen("settings", R.string.nav_settings, Icons.Default.Settings)
 }
 
 @Composable
@@ -49,7 +52,7 @@ fun MainApp() {
                     items.forEach { screen ->
                         NavigationBarItem(
                             icon = { Icon(screen.icon, contentDescription = null) },
-                            label = { Text(screen.label) },
+                            label = { Text(stringResource(screen.labelResId)) },
                             selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
                                 navController.navigate(screen.route) {
