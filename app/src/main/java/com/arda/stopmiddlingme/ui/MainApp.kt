@@ -21,7 +21,6 @@ import com.arda.stopmiddlingme.ui.screen.history.HistoryScreen
 import com.arda.stopmiddlingme.ui.screen.scanner.ScannerScreen
 import com.arda.stopmiddlingme.ui.screen.settings.SettingsScreen
 
-import androidx.compose.ui.tooling.preview.Preview
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -73,13 +72,5 @@ fun MainApp() {
                 composable(Screen.Settings.route) { SettingsScreen() }
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MainAppPreview() {
-    StopMiddlingMeTheme {
-        MainApp()
     }
 }

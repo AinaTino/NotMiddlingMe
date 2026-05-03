@@ -1,10 +1,10 @@
 package com.arda.stopmiddlingme.domain.model
 
-enum class AlertLevel(val score: Int) {
-    SAFE(0),
-    SUSPECT(1),
-    WARNING(2),
-    CRITIQUE(3);
+enum class AlertLevel {
+    SAFE,
+    SUSPECT,
+    WARNING,
+    CRITIQUE;
 
     companion object {
         fun fromScore(score: Int, hasStandalone: Boolean): AlertLevel {

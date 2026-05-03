@@ -21,6 +21,7 @@ import org.xbill.DNS.ARecord
 import org.xbill.DNS.Message
 import org.xbill.DNS.Section
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -79,12 +80,15 @@ class StopMiddlingMeVpnService : VpnService() {
             if (vpnInterface == null) return
 
             val inputStream = FileInputStream(vpnInterface?.fileDescriptor)
+            val outputStream = FileOutputStream(vpnInterface?.fileDescriptor)
             val buffer = ByteBuffer.allocate(Short.MAX_VALUE.toInt())
 
             while (scope.isActive) {
                 val length = try { inputStream.read(buffer.array()) } catch (e: Exception) { -1 }
                 if (length > 0) {
                     inspectPacket(buffer, length)
+                    // Forward the packet
+                    outputStream.write(buffer.array(), 0, length)
                 } else if (length == -1) {
                     break
                 }
