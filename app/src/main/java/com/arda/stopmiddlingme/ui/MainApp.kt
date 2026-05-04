@@ -18,6 +18,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.arda.stopmiddlingme.ui.screen.dashboard.DashboardScreen
 import com.arda.stopmiddlingme.ui.screen.history.HistoryScreen
+import com.arda.stopmiddlingme.ui.screen.history.detail.AlertDetailScreen
 import com.arda.stopmiddlingme.ui.screen.scanner.ScannerScreen
 import com.arda.stopmiddlingme.ui.screen.settings.SettingsScreen
 
@@ -30,6 +31,7 @@ sealed class Screen(val route: String, val labelResId: Int, val icon: ImageVecto
     object Dashboard : Screen("dashboard", R.string.nav_home, Icons.Default.Home)
     object Scanner : Screen("scanner", R.string.nav_scanner, Icons.Default.Search)
     object History : Screen("history", R.string.nav_history, Icons.Default.History)
+    object AlertDetail : Screen("alert_detail/{sessionId}", R.string.nav_history, Icons.Default.History)
     object Settings : Screen("settings", R.string.nav_settings, Icons.Default.Settings)
 }
 
@@ -71,7 +73,14 @@ fun MainApp() {
             NavHost(navController, startDestination = Screen.Dashboard.route, Modifier.padding(innerPadding)) {
                 composable(Screen.Dashboard.route) { DashboardScreen() }
                 composable(Screen.Scanner.route) { ScannerScreen() }
-                composable(Screen.History.route) { HistoryScreen() }
+                composable(Screen.History.route) { 
+                    HistoryScreen(onNavigateToDetail = { sessionId ->
+                        navController.navigate("alert_detail/$sessionId")
+                    }) 
+                }
+                composable(Screen.AlertDetail.route) {
+                    AlertDetailScreen(onBack = { navController.popBackStack() })
+                }
                 composable(Screen.Settings.route) { SettingsScreen() }
             }
         }

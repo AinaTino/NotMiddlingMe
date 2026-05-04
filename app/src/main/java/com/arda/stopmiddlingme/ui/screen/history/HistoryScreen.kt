@@ -23,22 +23,26 @@ import com.arda.stopmiddlingme.data.db.entity.AlertSession
 import com.arda.stopmiddlingme.domain.model.AlertLevel
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
 import com.arda.stopmiddlingme.domain.model.SessionStatus
-import java.text.SimpleDateFormat
-import java.util.*
+import com.arda.stopmiddlingme.util.DateTimeUtils
 
 @Composable
 fun HistoryScreen(
+    onNavigateToDetail: (String) -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val sessions by viewModel.sessions.collectAsState()
 
-    HistoryContent(sessions = sessions)
+    HistoryContent(
+        sessions = sessions,
+        onItemClick = onNavigateToDetail
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryContent(
-    sessions: List<AlertSession>
+    sessions: List<AlertSession>,
+    onItemClick: (String) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -59,7 +63,7 @@ fun HistoryContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(sessions.sortedByDescending { it.openedAt }) { session ->
-                    HistoryItem(session)
+                    HistoryItem(session, onClick = { onItemClick(session.id) })
                 }
             }
         }
@@ -67,9 +71,11 @@ fun HistoryContent(
 }
 
 @Composable
-fun HistoryItem(session: AlertSession) {
-    val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-    val dateStr = dateFormat.format(Date(session.openedAt))
+fun HistoryItem(
+    session: AlertSession,
+    onClick: () -> Unit
+) {
+    val dateStr = DateTimeUtils.formatDateTime(session.openedAt)
 
     val statusColor = when (session.finalLevel) {
         AlertLevel.SAFE -> Color(0xFF4CAF50)
@@ -80,7 +86,8 @@ fun HistoryItem(session: AlertSession) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -149,7 +156,8 @@ fun HistoryPreview() {
                     autoCloseAt = System.currentTimeMillis() - 7100000,
                     closedAt = System.currentTimeMillis() - 7150000
                 )
-            )
+            ),
+            onItemClick = {}
         )
     }
 }

@@ -13,16 +13,37 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.arda.stopmiddlingme.R
 
 @Composable
-fun SettingsScreen() {
-    SettingsContent()
+fun SettingsScreen(
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
+    val dnsEnabled by viewModel.dnsMonitoring.collectAsState()
+    val sslStripEnabled by viewModel.sslStripDetection.collectAsState()
+    val notificationEnabled by viewModel.realTimeNotifications.collectAsState()
+
+    SettingsContent(
+        dnsEnabled = dnsEnabled,
+        onDnsToggle = viewModel::setDnsMonitoring,
+        sslStripEnabled = sslStripEnabled,
+        onSslStripToggle = viewModel::setSslStripDetection,
+        notificationEnabled = notificationEnabled,
+        onNotificationToggle = viewModel::setRealTimeNotifications
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsContent() {
+fun SettingsContent(
+    dnsEnabled: Boolean,
+    onDnsToggle: (Boolean) -> Unit,
+    sslStripEnabled: Boolean,
+    onSslStripToggle: (Boolean) -> Unit,
+    notificationEnabled: Boolean,
+    onNotificationToggle: (Boolean) -> Unit
+) {
     var showLanguageDialog by remember { mutableStateOf(false) }
     val locales = AppCompatDelegate.getApplicationLocales()
     val currentLocale = if (locales.isEmpty) "system" else locales.get(0)?.language ?: "en"
@@ -41,26 +62,26 @@ fun SettingsContent() {
         ) {
             Text(stringResource(R.string.general_config), style = MaterialTheme.typography.titleMedium)
             
-            var dnsEnabled by remember { mutableStateOf(true) }
             ToggleSetting(
                 stringResource(R.string.dns_monitoring),
                 stringResource(R.string.dns_monitoring_desc),
-                dnsEnabled
-            ) { dnsEnabled = it }
+                dnsEnabled,
+                onDnsToggle
+            )
             
-            var sslStripEnabled by remember { mutableStateOf(true) }
             ToggleSetting(
                 stringResource(R.string.ssl_strip_detection),
                 stringResource(R.string.ssl_strip_desc),
-                sslStripEnabled
-            ) { sslStripEnabled = it }
+                sslStripEnabled,
+                onSslStripToggle
+            )
             
-            var notificationEnabled by remember { mutableStateOf(true) }
             ToggleSetting(
                 stringResource(R.string.real_time_notifications),
                 stringResource(R.string.notifications_desc),
-                notificationEnabled
-            ) { notificationEnabled = it }
+                notificationEnabled,
+                onNotificationToggle
+            )
             
             HorizontalDivider()
 
@@ -135,7 +156,14 @@ fun LanguageOption(label: String, tag: String, currentTag: String, onClick: () -
 @Composable
 fun SettingsPreview() {
     com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme {
-        SettingsContent()
+        SettingsContent(
+            dnsEnabled = true,
+            onDnsToggle = {},
+            sslStripEnabled = true,
+            onSslStripToggle = {},
+            notificationEnabled = true,
+            onNotificationToggle = {}
+        )
     }
 }
 

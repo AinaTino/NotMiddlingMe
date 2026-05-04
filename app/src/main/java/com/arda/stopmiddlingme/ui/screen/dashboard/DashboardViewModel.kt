@@ -1,6 +1,5 @@
 package com.arda.stopmiddlingme.ui.screen.dashboard
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.ViewModel
@@ -10,11 +9,13 @@ import com.arda.stopmiddlingme.data.db.entity.SignalInstance
 import com.arda.stopmiddlingme.data.repository.BaselineRepository
 import com.arda.stopmiddlingme.data.repository.SessionRepository
 import com.arda.stopmiddlingme.data.source.WifiScanner
+import com.arda.stopmiddlingme.domain.model.NetworkInfo
 import com.arda.stopmiddlingme.service.MonitoringService
 import com.arda.stopmiddlingme.service.StopMiddlingMeVpnService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,17 +26,31 @@ class DashboardViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessionRepo: SessionRepository,
     private val baselineRepo: BaselineRepository,
-    private val wifiScanner: WifiScanner,      // ← ajoute cette injection
-    // ...
+    private val wifiScanner: WifiScanner
 ) : ViewModel() {
 
+    // 1. TOUTES les propriétés MutableStateFlow en premier
     private val _currentSsid = MutableStateFlow<String?>(null)
-    val currentSsid = _currentSsid.asStateFlow()
+    private val _isVpnRunning = MutableStateFlow(StopMiddlingMeVpnService.isRunning)
 
-    init {
-        // Charge le vrai SSID au démarrage
-        updateSsid(wifiScanner.getCurrentSsid())
-    }
+    // 2. Les versions publiques (ReadOnly)
+    val currentSsid = _currentSsid.asStateFlow()
+    val isVpnRunning = _isVpnRunning.asStateFlow()
+
+    // 3. Les StateFlow dérivés (Lazy)
+    val networkInfo: StateFlow<NetworkInfo?> = flow {
+        while(true) {
+            emit(NetworkInfo(
+                ssid       = wifiScanner.getCurrentSsid() ?: "—",
+                bssid      = wifiScanner.getCurrentBssid() ?: "—",
+                gatewayIp  = "—",
+                gatewayMac = "—",
+                dnsServers = emptyList(),
+                isConnected = wifiScanner.getCurrentSsid() != null
+            ))
+            delay(10000) // Rafraîchir toutes les 10s
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val currentSession: StateFlow<AlertSession?> = _currentSsid
         .flatMapLatest { ssid ->
@@ -51,8 +66,22 @@ class DashboardViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _isVpnRunning = MutableStateFlow(StopMiddlingMeVpnService.isRunning)
-    val isVpnRunning = _isVpnRunning.asStateFlow()
+    // 4. Bloc init en dernier
+    init {
+        // On initialise la valeur de départ EN ARRIÈRE-PLAN
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ssid = wifiScanner.getCurrentSsid()
+            _currentSsid.value = ssid
+        }
+
+        // Polling de l'état du VPN
+        viewModelScope.launch {
+            while (true) {
+                _isVpnRunning.value = StopMiddlingMeVpnService.isRunning
+                delay(5000)
+            }
+        }
+    }
 
     fun updateSsid(ssid: String?) {
         _currentSsid.value = ssid

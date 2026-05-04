@@ -21,6 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arda.stopmiddlingme.domain.model.AlertLevel
+import com.arda.stopmiddlingme.ui.theme.ColorCritique
+import com.arda.stopmiddlingme.ui.theme.ColorSafe
+import com.arda.stopmiddlingme.ui.theme.ColorSuspect
+import com.arda.stopmiddlingme.ui.theme.ColorWarning
 
 @Composable
 fun ScoreGauge(
@@ -29,10 +33,10 @@ fun ScoreGauge(
     modifier: Modifier = Modifier
 ) {
     val color = when (level) {
-        AlertLevel.SAFE     -> Color(0xFF2ECC71)
-        AlertLevel.SUSPECT  -> Color(0xFFF39C12)
-        AlertLevel.WARNING  -> Color(0xFFE67E22)
-        AlertLevel.CRITIQUE -> Color(0xFFE74C3C)
+        AlertLevel.SAFE     -> ColorSafe
+        AlertLevel.SUSPECT  -> ColorSuspect
+        AlertLevel.WARNING  -> ColorWarning
+        AlertLevel.CRITIQUE -> ColorCritique
     }
 
     val label = when (level) {
@@ -42,25 +46,26 @@ fun ScoreGauge(
         AlertLevel.CRITIQUE -> "ATTAQUE"
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alphaState = infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
+    // Animation UNIQUEMENT si CRITIQUE
+    val alpha by if (level == AlertLevel.CRITIQUE) {
+        val transition = rememberInfiniteTransition(label = "pulse")
+        transition.animateFloat(
+            initialValue = 0.5f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "alpha"
+        )
+    } else {
+        remember { mutableStateOf(1f) }
+    }
 
     Box(
         modifier = modifier
             .size(200.dp)
-            .graphicsLayer {
-                // Moving the state read to the draw phase (inside the lambda)
-                // fixes the "OwnerSnapshotObserver.observeReads during performMeasure" crash.
-                alpha = if (level == AlertLevel.CRITIQUE) alphaState.value else 1f
-            }
+            .graphicsLayer { this.alpha = alpha }
             .clip(CircleShape)
             .background(color.copy(alpha = 0.15f))
             .border(3.dp, color, CircleShape),
@@ -77,7 +82,8 @@ fun ScoreGauge(
                 text = label,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = color
+                color = color,
+                letterSpacing = 2.sp
             )
         }
     }
