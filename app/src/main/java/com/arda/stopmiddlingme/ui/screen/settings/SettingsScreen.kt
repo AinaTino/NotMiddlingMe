@@ -24,7 +24,8 @@ fun SettingsScreen() {
 @Composable
 fun SettingsContent() {
     var showLanguageDialog by remember { mutableStateOf(false) }
-    val currentLocale = AppCompatDelegate.getApplicationLocales().get(0)?.language ?: "en"
+    val locales = AppCompatDelegate.getApplicationLocales()
+    val currentLocale = if (locales.isEmpty) "system" else locales.get(0)?.language ?: "en"
 
     Scaffold(
         topBar = {
@@ -67,7 +68,12 @@ fun SettingsContent() {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.language)) },
                 supportingContent = { 
-                    Text(if (currentLocale == "fr") stringResource(R.string.language_fr) else stringResource(R.string.language_en)) 
+                    val languageDisplay = when(currentLocale) {
+                        "fr" -> stringResource(R.string.language_fr)
+                        "en" -> stringResource(R.string.language_en)
+                        else -> stringResource(R.string.system_default)
+                    }
+                    Text(languageDisplay)
                 },
                 leadingContent = { Icon(Icons.Default.Language, contentDescription = null) },
                 modifier = Modifier.clickable { showLanguageDialog = true }
@@ -87,6 +93,10 @@ fun SettingsContent() {
             title = { Text(stringResource(R.string.language)) },
             text = {
                 Column {
+                    LanguageOption(stringResource(R.string.system_default), "system", currentLocale) {
+                        AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+                        showLanguageDialog = false
+                    }
                     LanguageOption("English", "en", currentLocale) {
                         AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("en"))
                         showLanguageDialog = false

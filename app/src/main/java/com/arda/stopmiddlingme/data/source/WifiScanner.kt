@@ -30,6 +30,18 @@ class WifiScanner @Inject constructor(
         }
     }
 
+    @SuppressLint("MissingPermission")
+    fun getCurrentSsid(): String? {
+        val info = wifiManager.connectionInfo
+        return if (info != null && info.networkId != -1) {
+            info.ssid?.removeSurrounding("\"")?.let {
+                if (it == "<unknown ssid>") null else it
+            }
+        } else {
+            null
+        }
+    }
+
     private fun parseCapabilities(capabilities: String): String {
         return when {
             capabilities.contains("WPA3", ignoreCase = true) -> "WPA3"

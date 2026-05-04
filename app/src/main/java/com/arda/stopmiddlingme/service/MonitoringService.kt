@@ -43,6 +43,9 @@ class MonitoringService : Service() {
     @Inject lateinit var gatewayMonitor: GatewayMonitor
     @Inject lateinit var baselineRepo: BaselineRepository
 
+    @Volatile
+    private var justConnected = false
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var wifiManager: WifiManager
@@ -53,6 +56,7 @@ class MonitoringService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     }
@@ -101,9 +105,22 @@ class MonitoringService : Service() {
             .build()
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
+
+            // REMPLACE ton override onAvailable existant par :
             override fun onAvailable(network: Network) {
                 isConnectedToWifi = true
+                justConnected = true      // ← ajoute cette ligne
                 updateCurrentWifiInfo()
+            }
+
+            // REMPLACE ton override onLinkPropertiesChanged existant par :
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                val ssid = currentSsid ?: return
+                val unsolicited = !justConnected   // ← calcule avant de reset
+                justConnected = false              // ← reset immédiatement
+                scope.launch {
+                    gatewayMonitor.onNetworkChanged(linkProperties, ssid, isUnsolicited = unsolicited)
+                }
             }
 
             override fun onLost(network: Network) {
@@ -111,14 +128,6 @@ class MonitoringService : Service() {
                 currentSsid = null
             }
 
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-                val ssid = currentSsid ?: return
-                scope.launch {
-                    // Si onAvailable n'a pas été appelé juste avant, c'est "non sollicité"
-                    // Dans cette version simplifiée, on passe true si on veut tester le signal
-                    gatewayMonitor.onNetworkChanged(linkProperties, ssid, isUnsolicited = false)
-                }
-            }
         }
         connectivityManager.registerNetworkCallback(request, networkCallback!!)
     }
@@ -128,18 +137,6 @@ class MonitoringService : Service() {
         val info = wifiManager.connectionInfo
         currentSsid = info.ssid?.removeSurrounding("\"")
         if (currentSsid == "<unknown ssid>") currentSsid = null
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun scanWifiNetworks(): List<WifiAp> {
-        return wifiManager.scanResults.map {
-            WifiAp(
-                ssid = it.SSID,
-                bssid = it.BSSID,
-                security = it.capabilities,
-                signalLevel = it.level
-            )
-        }
     }
 
     private suspend fun ensureBaseline(ssid: String, arpTable: List<ArpEntry>) {
@@ -182,6 +179,7 @@ class MonitoringService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         scope.cancel()
         networkCallback?.let { connectivityManager.unregisterNetworkCallback(it) }
         super.onDestroy()
@@ -191,5 +189,9 @@ class MonitoringService : Service() {
 
     companion object {
         private const val NOTIF_ID = 1001
+
+        @Volatile
+        var isRunning: Boolean = false
+            private set
     }
 }

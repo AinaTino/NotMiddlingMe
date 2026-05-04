@@ -41,6 +41,7 @@ class StopMiddlingMeVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     }
 
@@ -127,7 +128,7 @@ class StopMiddlingMeVpnService : VpnService() {
                     for (record in answers) {
                         if (record is ARecord) {
                             val resolvedIp = record.address?.hostAddress ?: continue
-                            dnsAnalyzer.analyze(resolvedIp, domain, getCurrentSsid())
+                            dnsAnalyzer.analyze(resolvedIp, domain, getCurrentSsid(), serviceScope)
                         }
                     }
                 } catch (e: Exception) {
@@ -185,6 +186,7 @@ class StopMiddlingMeVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         job?.cancel()
         serviceScope.cancel()
         closeVpn()
@@ -194,5 +196,9 @@ class StopMiddlingMeVpnService : VpnService() {
     companion object {
         private const val NOTIF_ID = 2002
         const val ACTION_STOP = "com.arda.stopmiddlingme.STOP_VPN"
+
+        @Volatile
+        var isRunning: Boolean = false
+            private set
     }
 }

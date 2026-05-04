@@ -62,10 +62,14 @@ class GatewayMonitor @Inject constructor(
         }
     }
 
-    private fun isPrivateIp(ip: String?): Boolean {
-        if (ip == null) return false
-        return ip.startsWith("192.168.") ||
-               ip.startsWith("10.") ||
-               ip.startsWith("172.") // Simplifié pour la démonstration
+    private fun isPrivateIp(ip: String): Boolean {
+        val privateRanges = listOf(
+            Regex("^10\\..*"),
+            Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\..*"),  // 172.16 → 172.31 uniquement
+            Regex("^192\\.168\\..*"),
+            Regex("^127\\..*"),
+            Regex("^169\\.254\\..*")
+        )
+        return privateRanges.any { it.matches(ip) }
     }
 }

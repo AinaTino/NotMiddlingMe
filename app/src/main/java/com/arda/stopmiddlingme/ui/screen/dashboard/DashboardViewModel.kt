@@ -9,6 +9,8 @@ import com.arda.stopmiddlingme.data.db.entity.AlertSession
 import com.arda.stopmiddlingme.data.db.entity.SignalInstance
 import com.arda.stopmiddlingme.data.repository.BaselineRepository
 import com.arda.stopmiddlingme.data.repository.SessionRepository
+import com.arda.stopmiddlingme.data.source.WifiScanner
+import com.arda.stopmiddlingme.service.MonitoringService
 import com.arda.stopmiddlingme.service.StopMiddlingMeVpnService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,11 +24,18 @@ import javax.inject.Inject
 class DashboardViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessionRepo: SessionRepository,
-    private val baselineRepo: BaselineRepository
+    private val baselineRepo: BaselineRepository,
+    private val wifiScanner: WifiScanner,      // ← ajoute cette injection
+    // ...
 ) : ViewModel() {
 
     private val _currentSsid = MutableStateFlow<String?>(null)
     val currentSsid = _currentSsid.asStateFlow()
+
+    init {
+        // Charge le vrai SSID au démarrage
+        updateSsid(wifiScanner.getCurrentSsid())
+    }
 
     val currentSession: StateFlow<AlertSession?> = _currentSsid
         .flatMapLatest { ssid ->
@@ -42,7 +51,7 @@ class DashboardViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _isVpnRunning = MutableStateFlow(isServiceRunning(StopMiddlingMeVpnService::class.java))
+    private val _isVpnRunning = MutableStateFlow(StopMiddlingMeVpnService.isRunning)
     val isVpnRunning = _isVpnRunning.asStateFlow()
 
     fun updateSsid(ssid: String?) {
@@ -64,7 +73,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refreshServiceStatus() {
-        _isVpnRunning.value = isServiceRunning(StopMiddlingMeVpnService::class.java)
+        _isVpnRunning.value = StopMiddlingMeVpnService.isRunning
     }
 
     fun resolveAlert(sessionId: String) {
@@ -73,13 +82,5 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
-            if (serviceClass.name == service.service.className) {
-                return true
-            }
-        }
-        return false
-    }
+    fun isMonitoringRunning(): Boolean = MonitoringService.isRunning
 }

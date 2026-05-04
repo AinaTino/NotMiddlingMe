@@ -24,7 +24,7 @@ class DnsAnalyzer @Inject constructor(
         Regex("^169\\.254\\..*")
     )
 
-    fun analyze(resolvedIp: String, domain: String, ssid: String) {
+    fun analyze(resolvedIp: String, domain: String, ssid: String, scope: CoroutineScope) {
         // Règle 1 — IP privée pour domaine public (ex: google.com -> 192.168.1.50)
         if (isPrivateIp(resolvedIp)) {
             scoreEngine.addSignal(
@@ -36,7 +36,7 @@ class DnsAnalyzer @Inject constructor(
         }
 
         // Règle 2 — Comparaison avec DNS de confiance (Cloudflare 1.1.1.1)
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch(Dispatchers.IO) {
             try {
                 val trustedIp = queryTrustedDns(domain)
                 if (trustedIp != null && !sameSubnet16(resolvedIp, trustedIp)) {

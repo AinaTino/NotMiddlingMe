@@ -44,7 +44,6 @@ fun DashboardScreen(
 
     // Mock update SSID pour le test
     LaunchedEffect(Unit) {
-        viewModel.updateSsid("WiFi_Secure_Home")
         viewModel.refreshServiceStatus()
     }
 

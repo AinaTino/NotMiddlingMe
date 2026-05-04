@@ -2,9 +2,13 @@ package com.arda.stopmiddlingme.domain.analyzer
 
 import com.arda.stopmiddlingme.domain.engine.ScoreEngine
 import com.arda.stopmiddlingme.domain.model.SignalType
+import java.security.KeyStore
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 @Singleton
 class CertAnalyzer @Inject constructor(
@@ -23,13 +27,36 @@ class CertAnalyzer @Inject constructor(
             )
         }
 
-        // 2. Vérifier si le domaine correspond (simplifié)
+        // 2. Vérifier si CA inconnue (si pas déjà auto-signé)
+        if (!isSelfSigned(cert) && !isKnownCa(cert)) {
+            scoreEngine.addSignal(
+                ssid = ssid,
+                type = SignalType.CERT_UNKNOWN_CA,
+                detail = "CA inconnue pour $domain : ${cert.issuerX500Principal.name}"
+            )
+        }
+
+        // 3. Vérifier si le domaine correspond (simplifié)
         if (!domainMatches(cert, domain)) {
             scoreEngine.addSignal(
                 ssid = ssid,
                 type = SignalType.CERT_DOMAIN_MISMATCH,
                 detail = "Le certificat ne correspond pas au domaine $domain"
             )
+        }
+    }
+
+    private fun isKnownCa(cert: X509Certificate): Boolean {
+        return try {
+            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            tmf.init(null as KeyStore?)
+            val trustManager = tmf.trustManagers
+                .filterIsInstance<X509TrustManager>()
+                .firstOrNull() ?: return false
+            trustManager.checkServerTrusted(arrayOf(cert), "RSA")
+            true
+        } catch (e: CertificateException) {
+            false
         }
     }
 
