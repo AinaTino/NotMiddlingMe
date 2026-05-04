@@ -40,15 +40,8 @@ class DashboardViewModel @Inject constructor(
     // 3. Les StateFlow dérivés (Lazy)
     val networkInfo: StateFlow<NetworkInfo?> = flow {
         while(true) {
-            emit(NetworkInfo(
-                ssid       = wifiScanner.getCurrentSsid() ?: "—",
-                bssid      = wifiScanner.getCurrentBssid() ?: "—",
-                gatewayIp  = "—",
-                gatewayMac = "—",
-                dnsServers = emptyList(),
-                isConnected = wifiScanner.getCurrentSsid() != null
-            ))
-            delay(10000) // Rafraîchir toutes les 10s
+            emit(wifiScanner.getFullNetworkInfo())
+            delay(5000) // Rafraîchir toutes les 5s pour plus de réactivité
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
