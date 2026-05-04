@@ -3,7 +3,10 @@ package com.arda.stopmiddlingme.ui.screen.settings
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +26,7 @@ fun SettingsScreen(
     val dnsEnabled by viewModel.dnsMonitoring.collectAsState()
     val sslStripEnabled by viewModel.sslStripDetection.collectAsState()
     val notificationEnabled by viewModel.realTimeNotifications.collectAsState()
+    val dnsServer by viewModel.dnsServer.collectAsState()
 
     SettingsContent(
         dnsEnabled = dnsEnabled,
@@ -30,7 +34,9 @@ fun SettingsScreen(
         sslStripEnabled = sslStripEnabled,
         onSslStripToggle = viewModel::setSslStripDetection,
         notificationEnabled = notificationEnabled,
-        onNotificationToggle = viewModel::setRealTimeNotifications
+        onNotificationToggle = viewModel::setRealTimeNotifications,
+        dnsServer = dnsServer,
+        onDnsServerChange = viewModel::setDnsServer
     )
 }
 
@@ -42,9 +48,12 @@ fun SettingsContent(
     sslStripEnabled: Boolean,
     onSslStripToggle: (Boolean) -> Unit,
     notificationEnabled: Boolean,
-    onNotificationToggle: (Boolean) -> Unit
+    onNotificationToggle: (Boolean) -> Unit,
+    dnsServer: String,
+    onDnsServerChange: (String) -> Unit
 ) {
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showDnsDialog by remember { mutableStateOf(false) }
     val locales = AppCompatDelegate.getApplicationLocales()
     val currentLocale = if (locales.isEmpty) "system" else locales.get(0)?.language ?: "en"
 
@@ -57,7 +66,8 @@ fun SettingsContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(stringResource(R.string.general_config), style = MaterialTheme.typography.titleMedium)
@@ -82,6 +92,13 @@ fun SettingsContent(
                 notificationEnabled,
                 onNotificationToggle
             )
+
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.dns_server_title)) },
+                supportingContent = { Text(dnsServer) },
+                leadingContent = { Icon(Icons.Default.Dns, contentDescription = null) },
+                modifier = Modifier.clickable { showDnsDialog = true }
+            )
             
             HorizontalDivider()
 
@@ -101,6 +118,17 @@ fun SettingsContent(
             )
 
             HorizontalDivider()
+
+            if (showDnsDialog) {
+                DnsDialog(
+                    currentDns = dnsServer,
+                    onDismiss = { showDnsDialog = false },
+                    onConfirm = {
+                        onDnsServerChange(it)
+                        showDnsDialog = false
+                    }
+                )
+            }
             
             Text(stringResource(R.string.about), style = MaterialTheme.typography.titleMedium)
             Text("StopMiddlingMe v1.0.0", style = MaterialTheme.typography.bodyMedium)
@@ -152,6 +180,50 @@ fun LanguageOption(label: String, tag: String, currentTag: String, onClick: () -
     }
 }
 
+@Composable
+fun DnsDialog(
+    currentDns: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(currentDns) }
+    val isError = !android.util.Patterns.IP_ADDRESS.matcher(text).matches()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.dns_server_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.dns_server_desc))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.dns_server_hint)) },
+                    isError = isError,
+                    supportingText = {
+                        if (isError) Text(stringResource(R.string.invalid_dns))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(text) },
+                enabled = !isError
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        }
+    )
+}
+
 @Preview(showBackground = true)
 @Composable
 fun SettingsPreview() {
@@ -162,7 +234,9 @@ fun SettingsPreview() {
             sslStripEnabled = true,
             onSslStripToggle = {},
             notificationEnabled = true,
-            onNotificationToggle = {}
+            onNotificationToggle = {},
+            dnsServer = "1.1.1.1",
+            onDnsServerChange = {}
         )
     }
 }

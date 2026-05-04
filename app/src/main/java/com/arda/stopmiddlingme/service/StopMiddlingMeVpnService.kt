@@ -12,11 +12,13 @@ import android.net.wifi.WifiManager
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.arda.stopmiddlingme.MainActivity
+import com.arda.stopmiddlingme.data.datastore.SettingsDataStore
 import com.arda.stopmiddlingme.domain.analyzer.CertAnalyzer
 import com.arda.stopmiddlingme.domain.analyzer.DnsAnalyzer
 import com.arda.stopmiddlingme.domain.analyzer.SslStripAnalyzer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.xbill.DNS.ARecord
 import org.xbill.DNS.Message
 import org.xbill.DNS.Section
@@ -32,6 +34,7 @@ class StopMiddlingMeVpnService : VpnService() {
     @Inject lateinit var dnsAnalyzer: DnsAnalyzer
     @Inject lateinit var sslStripAnalyzer: SslStripAnalyzer
     @Inject lateinit var certAnalyzer: CertAnalyzer
+    @Inject lateinit var settingsDataStore: SettingsDataStore
     
     private lateinit var wifiManager: WifiManager
 
@@ -70,11 +73,12 @@ class StopMiddlingMeVpnService : VpnService() {
 
     private suspend fun setupVpn(scope: CoroutineScope) {
         try {
+            val userDns = settingsDataStore.dnsServer.first()
             val builder = Builder()
                 .setSession("StopMiddlingMe")
                 .addAddress("10.0.0.2", 32)
                 .addRoute("0.0.0.0", 0) 
-                .addDnsServer("1.1.1.1")
+                .addDnsServer(userDns)
                 .setBlocking(false) 
 
             vpnInterface = builder.establish()

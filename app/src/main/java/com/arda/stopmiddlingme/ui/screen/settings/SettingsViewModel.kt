@@ -24,6 +24,9 @@ class SettingsViewModel @Inject constructor(
     val realTimeNotifications: StateFlow<Boolean> = settingsDataStore.realTimeNotifications
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val dnsServer: StateFlow<String> = settingsDataStore.dnsServer
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "1.1.1.1")
+
     fun setDnsMonitoring(enabled: Boolean) {
         viewModelScope.launch { settingsDataStore.setDnsMonitoring(enabled) }
     }
@@ -34,5 +37,9 @@ class SettingsViewModel @Inject constructor(
 
     fun setRealTimeNotifications(enabled: Boolean) {
         viewModelScope.launch { settingsDataStore.setRealTimeNotifications(enabled) }
+    }
+
+    fun setDnsServer(server: String) {
+        viewModelScope.launch { settingsDataStore.setDnsServer(server) }
     }
 }

@@ -19,6 +19,7 @@ class SettingsDataStore @Inject constructor(
     private val DNS_MONITORING = booleanPreferencesKey("dns_monitoring")
     private val SSL_STRIP_DETECTION = booleanPreferencesKey("ssl_strip_detection")
     private val REAL_TIME_NOTIFICATIONS = booleanPreferencesKey("real_time_notifications")
+    private val DNS_SERVER = stringPreferencesKey("dns_server")
 
     val dnsMonitoring: Flow<Boolean> = context.dataStore.data
         .map { preferences -> preferences[DNS_MONITORING] ?: true }
@@ -28,6 +29,9 @@ class SettingsDataStore @Inject constructor(
 
     val realTimeNotifications: Flow<Boolean> = context.dataStore.data
         .map { preferences -> preferences[REAL_TIME_NOTIFICATIONS] ?: true }
+
+    val dnsServer: Flow<String> = context.dataStore.data
+        .map { preferences -> preferences[DNS_SERVER] ?: "1.1.1.1" }
 
     suspend fun setDnsMonitoring(enabled: Boolean) {
         context.dataStore.edit { preferences ->
@@ -44,6 +48,12 @@ class SettingsDataStore @Inject constructor(
     suspend fun setRealTimeNotifications(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[REAL_TIME_NOTIFICATIONS] = enabled
+        }
+    }
+
+    suspend fun setDnsServer(server: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DNS_SERVER] = server
         }
     }
 }

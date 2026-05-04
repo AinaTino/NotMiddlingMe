@@ -24,6 +24,11 @@
     <string name="language_fr">Français</string>
     <string name="system_default">Langue du système</string>
 
+    <string name="dns_server_title">Serveur DNS</string>
+    <string name="dns_server_desc">Le serveur DNS utilisé par le VPN</string>
+    <string name="dns_server_hint">ex: 1.1.1.1 ou 8.8.8.8</string>
+    <string name="invalid_dns">Adresse IP invalide</string>
+
     <string name="scanner_title">Scanner LAN</string>
     <string name="scanning_network">Analyse du réseau…</string>
     <string name="identifying_devices">Identification des appareils connectés</string>

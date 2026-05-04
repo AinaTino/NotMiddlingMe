@@ -24,6 +24,11 @@
     <string name="language_fr">French</string>
     <string name="system_default">System Default</string>
 
+    <string name="dns_server_title">DNS Server</string>
+    <string name="dns_server_desc">The DNS server used by the VPN</string>
+    <string name="dns_server_hint">e.g. 1.1.1.1 or 8.8.8.8</string>
+    <string name="invalid_dns">Invalid IP address</string>
+
     <string name="scanner_title">LAN Scanner</string>
     <string name="scanning_network">Scanning network…</string>
     <string name="identifying_devices">Identifying connected devices</string>
