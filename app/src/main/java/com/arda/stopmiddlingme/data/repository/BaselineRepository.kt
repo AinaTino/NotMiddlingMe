@@ -36,7 +36,8 @@ class BaselineRepository @Inject constructor(
         bssid: String,
         gatewayIp: String,
         gatewayMac: String,
-        dnsServers: List<String>
+        dnsServers: List<String>,
+        security: String
     ) {
         val existing = dao.get(ssid)
         if (existing == null) {
@@ -47,6 +48,7 @@ class BaselineRepository @Inject constructor(
                     gatewayIp = gatewayIp,
                     gatewayMac = gatewayMac,
                     dnsServers = dnsServers.joinToString(","),
+                    security = security,
                     createdAt = System.currentTimeMillis()
                 )
             )

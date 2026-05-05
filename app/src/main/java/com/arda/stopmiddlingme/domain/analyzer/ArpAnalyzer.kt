@@ -13,6 +13,8 @@ class ArpAnalyzer @Inject constructor(
     private val baselineRepo: BaselineRepository,
     private val scoreEngine: ScoreEngine
 ) {
+    private var lastReportedGatewayMac: String? = null
+    private val reportedDuplicateMacs = mutableSetOf<String>()
 
     suspend fun analyze(table: List<ArpEntry>, ssid: String) {
         val baseline = baselineRepo.get(ssid) ?: return
@@ -26,24 +28,29 @@ class ArpAnalyzer @Inject constructor(
         baseline: NetworkBaseline,
         ssid: String
     ) {
-        val currentGatewayEntry = table.find { it.ip == baseline.gatewayIp }
-            ?: return
+        val currentMac = table.find { it.ip == baseline.gatewayIp }?.mac ?: return
 
-        if (currentGatewayEntry.mac != baseline.gatewayMac) {
+        if (currentMac != baseline.gatewayMac && currentMac != lastReportedGatewayMac) {
+            lastReportedGatewayMac = currentMac
             scoreEngine.addSignal(
                 ssid = ssid,
                 type = SignalType.ARP_GATEWAY_CHANGE,
-                detail = "Gateway ${baseline.gatewayIp}: " +
-                        "${baseline.gatewayMac} → ${currentGatewayEntry.mac}"
+                detail = "Gateway ${baseline.gatewayIp}: ${baseline.gatewayMac} → $currentMac"
             )
+        }
+
+        if (currentMac == baseline.gatewayMac) {
+            lastReportedGatewayMac = null
         }
     }
 
     private fun checkMacDuplicates(table: List<ArpEntry>, ssid: String) {
-        val macToIps = table.groupBy { it.mac }
+        val duplicates = table.groupBy { it.mac }
+            .filter { (_, entries) -> entries.size > 1 }
 
-        macToIps.forEach { (mac, entries) ->
-            if (entries.size > 1) {
+        duplicates.forEach { (mac, entries) ->
+            if (mac !in reportedDuplicateMacs) {
+                reportedDuplicateMacs.add(mac)
                 val ips = entries.joinToString(", ") { it.ip }
                 scoreEngine.addSignal(
                     ssid = ssid,
@@ -52,5 +59,7 @@ class ArpAnalyzer @Inject constructor(
                 )
             }
         }
+
+        reportedDuplicateMacs.retainAll(duplicates.keys)
     }
 }

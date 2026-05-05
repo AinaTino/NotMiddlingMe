@@ -2,6 +2,8 @@ package com.arda.stopmiddlingme.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.arda.stopmiddlingme.data.db.AppDatabase
 import com.arda.stopmiddlingme.data.db.dao.BaselineDao
 import com.arda.stopmiddlingme.data.db.dao.SessionDao
@@ -24,7 +26,17 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "stopmiddlingme.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
+
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE network_baseline ADD COLUMN security TEXT NOT NULL DEFAULT 'WPA2'"
+            )
+        }
+    }
 
     @Provides
     fun provideBaselineDao(db: AppDatabase): BaselineDao = db.baselineDao()

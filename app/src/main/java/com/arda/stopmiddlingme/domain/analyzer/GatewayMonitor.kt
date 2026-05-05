@@ -49,15 +49,19 @@ class GatewayMonitor @Inject constructor(
             }
         }
 
-        // 4. IPv6 Rogue RA
-        val hasIPv6Gateway = lp.routes.any { it.isDefaultRoute && it.gateway?.hostAddress?.contains(":") == true }
-        val hadIPv6Gateway = baseline.gatewayIp.contains(":") // Simplification
+        // 4. IPv6 Rogue RA — Limite les faux positifs
+        val currentIPv6Gateways = lp.routes
+            .filter { it.isDefaultRoute && it.gateway?.hostAddress?.contains(":") == true }
+            .mapNotNull { it.gateway?.hostAddress }
 
-        if (hasIPv6Gateway && !hadIPv6Gateway) {
+        // On ne fire que si une gateway IPv6 apparaît sur un réseau qui n'en avait pas en baseline
+        val hadIPv6InBaseline = baseline.gatewayIp.contains(":")
+        
+        if (currentIPv6Gateways.isNotEmpty() && !hadIPv6InBaseline) {
             scoreEngine.addSignal(
                 ssid = ssid,
                 type = SignalType.IPV6_ROGUE_RA,
-                detail = "Apparition d'une gateway IPv6 sur un réseau IPv4"
+                detail = "Gateway IPv6 apparue : ${currentIPv6Gateways.first()}"
             )
         }
     }

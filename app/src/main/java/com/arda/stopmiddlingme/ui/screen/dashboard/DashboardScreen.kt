@@ -305,7 +305,7 @@ fun DashboardPreview() {
             currentSession = null,
             activeSignals = emptyList(),
             isVpnRunning = false,
-            networkInfo = NetworkInfo("Mon Wifi", "00:11:22:33:44:55", "192.168.1.1", "", emptyList(), true),
+            networkInfo = NetworkInfo("Mon Wifi", "00:11:22:33:44:55", "192.168.1.1", "", emptyList(), isConnected = true),
             onToggleVpn = {},
             onResolveAlert = {}
         )

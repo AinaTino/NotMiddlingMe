@@ -12,6 +12,7 @@ data class NetworkBaseline(
     val gatewayMac: String,
     // stocké comme JSON string via TypeConverter
     val dnsServers: String,
+    val security: String = "WPA2",
     val createdAt: Long,
     val isTrusted: Boolean = false
 )

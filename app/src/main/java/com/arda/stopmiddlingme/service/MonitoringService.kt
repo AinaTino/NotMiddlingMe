@@ -144,13 +144,15 @@ class MonitoringService : Service() {
         if (existing == null) {
             val gatewayIp = getGatewayIp() ?: return
             val gatewayMac = arpTable.find { it.ip == gatewayIp }?.mac ?: return
-            
+            val fullInfo = wifiScanner.getFullNetworkInfo()
+
             baselineRepo.createIfAbsent(
                 ssid = ssid,
                 bssid = wifiManager.connectionInfo.bssid ?: "",
                 gatewayIp = gatewayIp,
                 gatewayMac = gatewayMac,
-                dnsServers = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)?.dnsServers?.map { it.hostAddress ?: "" } ?: emptyList()
+                dnsServers = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)?.dnsServers?.map { it.hostAddress ?: "" } ?: emptyList(),
+                security = fullInfo.security
             )
         }
     }

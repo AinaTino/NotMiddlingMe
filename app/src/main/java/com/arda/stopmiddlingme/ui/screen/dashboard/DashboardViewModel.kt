@@ -38,12 +38,16 @@ class DashboardViewModel @Inject constructor(
     val isVpnRunning = _isVpnRunning.asStateFlow()
 
     // 3. Les StateFlow dérivés (Lazy)
-    val networkInfo: StateFlow<NetworkInfo?> = flow {
+    val networkInfo: StateFlow<NetworkInfo> = flow {
         while(true) {
             emit(wifiScanner.getFullNetworkInfo())
             delay(5000) // Rafraîchir toutes les 5s pour plus de réactivité
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        NetworkInfo("—", "—", "—", "—", emptyList(), isConnected = false) // valeur initiale
+    )
 
     val currentSession: StateFlow<AlertSession?> = _currentSsid
         .flatMapLatest { ssid ->

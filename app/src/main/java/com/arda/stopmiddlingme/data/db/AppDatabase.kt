@@ -16,7 +16,7 @@ import com.arda.stopmiddlingme.data.db.entity.SignalInstance
         AlertSession::class,
         SignalInstance::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

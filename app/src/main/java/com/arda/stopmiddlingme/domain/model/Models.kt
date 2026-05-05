@@ -12,6 +12,7 @@ data class NetworkInfo(
     val gatewayIp: String,
     val gatewayMac: String,
     val dnsServers: List<String>,
+    val security: String = "WPA2",
     val isConnected: Boolean
 )
 

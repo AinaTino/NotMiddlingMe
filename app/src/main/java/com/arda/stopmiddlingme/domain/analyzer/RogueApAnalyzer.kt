@@ -27,11 +27,11 @@ class RogueApAnalyzer @Inject constructor(
             )
 
             // 2. Vérifier si la sécurité est dégradée
-            if (isSecurityDegraded(baseline.ssid, rogue.security)) { // Note: On suppose la sécurité dans la baseline ou fixe
+            if (isSecurityDegraded(baseline.security, rogue.security)) {
                 scoreEngine.addSignal(
                     ssid = currentSsid,
                     type = SignalType.ROGUE_AP_SECURITY,
-                    detail = "Sécurité dégradée sur ${rogue.bssid}: ${rogue.security}"
+                    detail = "Sécurité dégradée sur ${rogue.bssid}: ${rogue.security} (Baseline=${baseline.security})"
                 )
             }
         }

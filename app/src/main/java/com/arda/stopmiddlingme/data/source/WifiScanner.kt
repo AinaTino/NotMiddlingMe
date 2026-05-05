@@ -38,12 +38,23 @@ class WifiScanner @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    fun getFullNetworkInfo(): NetworkInfo? {
-        try {
-            val network = connectivityManager.activeNetwork ?: return null
-            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return null
-            
-            if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
+    fun getFullNetworkInfo(): NetworkInfo {
+        return try {
+            val network = connectivityManager.activeNetwork
+            val capabilities = network?.let { connectivityManager.getNetworkCapabilities(it) }
+            val isWifi = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+
+            if (!isWifi) {
+                // Pas sur WiFi — retourne un état "déconnecté" plutôt que null
+                return NetworkInfo(
+                    ssid       = "—",
+                    bssid      = "—",
+                    gatewayIp  = "—",
+                    gatewayMac = "—",
+                    dnsServers = emptyList(),
+                    isConnected = false
+                )
+            }
 
             val linkProperties = connectivityManager.getLinkProperties(network)
             val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -53,42 +64,56 @@ class WifiScanner @Inject constructor(
                 wifiManager.connectionInfo
             }
 
-            val ssid = wifiInfo?.ssid?.removeSurrounding("\"")?.let {
-                if (it == "<unknown ssid>" || it == "0x") null else it
-            } ?: "Non connecté"
+            val ssid = wifiInfo?.ssid
+                ?.removeSurrounding("\"")
+                ?.takeIf { it != "<unknown ssid>" && it != "0x" && it.isNotEmpty() }
+                ?: "Permission manquante"
 
-            val bssid = wifiInfo?.bssid ?: "—"
-            
-            val gatewayIp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                linkProperties?.dhcpServerAddress?.hostAddress
-            } else {
-                null
-            } ?: linkProperties?.routes?.firstOrNull { it.isDefaultRoute }?.gateway?.hostAddress 
-              ?: "—"
-            
-            val dnsServers = linkProperties?.dnsServers?.mapNotNull { it.hostAddress } ?: emptyList()
+            val gatewayIp = linkProperties?.routes
+                ?.firstOrNull { it.isDefaultRoute && it.gateway != null }
+                ?.gateway?.hostAddress ?: "—"
 
-            return NetworkInfo(
-                ssid = ssid,
-                bssid = bssid,
-                gatewayIp = gatewayIp,
+            val dnsServers = linkProperties?.dnsServers
+                ?.mapNotNull { it.hostAddress }
+                ?: emptyList()
+
+            // Récupérer la sécurité via les scanResults pour le BSSID actuel
+            val currentBssid = wifiInfo?.bssid
+            val security = if (currentBssid != null) {
+                wifiManager.scanResults.find { it.BSSID == currentBssid }?.let { 
+                    parseCapabilities(it.capabilities) 
+                } ?: "WPA2"
+            } else "WPA2"
+
+            NetworkInfo(
+                ssid       = ssid,
+                bssid      = currentBssid ?: "—",
+                gatewayIp  = gatewayIp,
                 gatewayMac = "—",
                 dnsServers = dnsServers,
+                security = security,
                 isConnected = true
             )
         } catch (e: Exception) {
-            return null
+            NetworkInfo(
+                ssid = "Erreur",
+                bssid = "—",
+                gatewayIp = "—",
+                gatewayMac = "—",
+                dnsServers = emptyList(),
+                isConnected = false
+            )
         }
     }
 
     @SuppressLint("MissingPermission")
     fun getCurrentSsid(): String? {
-        return getFullNetworkInfo()?.ssid.takeIf { it != "Non connecté" }
+        return getFullNetworkInfo().ssid.takeIf { it != "Non connecté" }
     }
 
     @SuppressLint("MissingPermission")
     fun getCurrentBssid(): String? {
-        return getFullNetworkInfo()?.bssid
+        return getFullNetworkInfo().bssid
     }
 
     private fun parseCapabilities(capabilities: String): String {
