@@ -13,11 +13,18 @@ class ArpAnalyzer @Inject constructor(
     private val baselineRepo: BaselineRepository,
     private val scoreEngine: ScoreEngine
 ) {
+    private var lastAnalyzedSsid: String? = null
     private var lastReportedGatewayMac: String? = null
     private val reportedDuplicateMacs = mutableSetOf<String>()
 
     suspend fun analyze(table: List<ArpEntry>, ssid: String) {
         val baseline = baselineRepo.get(ssid) ?: return
+
+        if (ssid != lastAnalyzedSsid) {
+            lastReportedGatewayMac = null
+            reportedDuplicateMacs.clear()
+            lastAnalyzedSsid = ssid
+        }
 
         checkGatewayMac(table, baseline, ssid)
         checkMacDuplicates(table, ssid)

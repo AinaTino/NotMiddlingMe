@@ -89,6 +89,12 @@ enum class SignalType(
         decaySeconds = 30,
         description = "Domaine public résolu en IP privée"
     ),
+    DNS_SPOOFING(
+        poids = 4,
+        standalone = true,
+        decaySeconds = 30,
+        description = "Détournement DNS suspecté (IP divergente)"
+    ),
     DNS_SERVER_CHANGED(
         poids = 3,
         standalone = false,

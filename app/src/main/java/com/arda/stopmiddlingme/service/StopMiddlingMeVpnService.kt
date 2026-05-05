@@ -19,13 +19,18 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.xbill.DNS.ARecord
+import org.xbill.DNS.Flags
 import org.xbill.DNS.Message
 import org.xbill.DNS.Section
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import javax.inject.Inject
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @AndroidEntryPoint
 class StopMiddlingMeVpnService : VpnService() {
@@ -71,29 +76,58 @@ class StopMiddlingMeVpnService : VpnService() {
 
     private suspend fun setupVpn(scope: CoroutineScope) {
         try {
-            val userDns = settingsDataStore.dnsServer.first()
-            val builder = Builder()
+            vpnInterface = Builder()
                 .setSession("StopMiddlingMe")
                 .addAddress("10.0.0.2", 32)
                 .addRoute("0.0.0.0", 0)
-                .addDnsServer(userDns)
+                .addDnsServer(settingsDataStore.dnsServer.first())
                 .setBlocking(false)
-
-            vpnInterface = builder.establish() ?: return
+                .establish() ?: return
 
             val inputStream  = FileInputStream(vpnInterface!!.fileDescriptor)
             val outputStream = FileOutputStream(vpnInterface!!.fileDescriptor)
-            val buffer = ByteBuffer.allocate(65535)
+            val buffer       = ByteArray(65535)
+            val outputMutex  = Mutex()
 
             while (scope.isActive) {
-                buffer.clear()
-                val length = inputStream.read(buffer.array())
+                val length = inputStream.read(buffer)
                 if (length <= 0) { yield(); continue }
 
-                val data = buffer.array().copyOf(length)
-                val response = forwardAndAnalyze(data, length)
-                if (response != null) {
-                    outputStream.write(response)
+                val data    = buffer.copyOf(length)
+                val version = (data[0].toInt() shr 4) and 0x0F
+
+                // IPv6 — laisser passer intact
+                if (version != 4) {
+                    outputMutex.withLock { outputStream.write(data, 0, length) }
+                    continue
+                }
+
+                val protocol = data[9].toInt()
+                val ihl      = (data[0].toInt() and 0x0F) * 4
+                if (ihl + 4 > length) continue
+
+                val dstPort = ((data[ihl + 2].toInt() and 0xFF) shl 8) or
+                               (data[ihl + 3].toInt() and 0xFF)
+
+                when {
+                    // DNS UDP — intercepter, forwarder, analyser la réponse, réinjecter
+                    protocol == 17 && dstPort == 53 -> {
+                        scope.launch {
+                            handleDns(data, length, ihl, outputStream, outputMutex)
+                        }
+                        // NE PAS réécrire la requête originale — on gère la réponse dans handleDns
+                    }
+
+                    // HTTP TCP port 80 — analyser SSL Strip, laisser passer intact
+                    protocol == 6 && dstPort == 80 -> {
+                        inspectHttp(data, length, ihl)
+                        outputMutex.withLock { outputStream.write(data, 0, length) }
+                    }
+
+                    // Tout le reste (HTTPS, TCP quelconque) — laisser passer sans toucher
+                    else -> {
+                        outputMutex.withLock { outputStream.write(data, 0, length) }
+                    }
                 }
 
                 yield()
@@ -107,77 +141,80 @@ class StopMiddlingMeVpnService : VpnService() {
         }
     }
 
-    private suspend fun forwardAndAnalyze(data: ByteArray, length: Int): ByteArray? {
+    private suspend fun handleDns(
+        data: ByteArray,
+        length: Int,
+        ihl: Int,
+        outputStream: FileOutputStream,
+        mutex: Mutex
+    ) {
         try {
-            val version = (data[0].toInt() shr 4) and 0x0F
-            if (version != 4) return null
+            val srcIp   = data.copyOfRange(12, 16)
+            val srcPort = ((data[ihl].toInt() and 0xFF) shl 8) or
+                           (data[ihl + 1].toInt() and 0xFF)
+            val dnsPayload = data.copyOfRange(ihl + 8, length)
 
-            val protocol = data[9].toInt()
-            val ihl = (data[0].toInt() and 0x0F) * 4
+            val socket = DatagramSocket()
+            protect(socket)
+            socket.soTimeout = 3000
+            val trustedDns = InetAddress.getByName("1.1.1.1")
+            socket.send(DatagramPacket(dnsPayload, dnsPayload.size, trustedDns, 53))
 
-            val destIp = InetAddress.getByAddress(data.copyOfRange(16, 20))
-            val srcIp = data.copyOfRange(12, 16)
-            val srcPort = ((data[ihl].toInt() and 0xFF) shl 8) or (data[ihl + 1].toInt() and 0xFF)
-            val destPort = ((data[ihl + 2].toInt() and 0xFF) shl 8) or (data[ihl + 3].toInt() and 0xFF)
+            val responseBuffer = ByteArray(65535)
+            val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
+            socket.receive(responsePacket)
+            socket.close()
 
-            if (protocol == 17) { // UDP
-                val dnsPayload = data.copyOfRange(ihl + 8, length)
-                val socket = java.net.DatagramSocket()
-                protect(socket)
-                socket.soTimeout = 3000
-                socket.send(java.net.DatagramPacket(dnsPayload, dnsPayload.size, destIp, destPort))
+            val responseData = responsePacket.data.copyOf(responsePacket.length)
 
-                val responseBuffer = ByteArray(65535)
-                val responsePacket = java.net.DatagramPacket(responseBuffer, responseBuffer.size)
-                socket.receive(responsePacket)
-                socket.close()
+            // Analyser la RÉPONSE — contient les IPs résolues
+            analyzeDnsResponse(responseData, getCurrentSsid())
 
-                val responseData = responsePacket.data.copyOf(responsePacket.length)
+            // Réinjecter la réponse dans le TUN
+            val response = buildUdpResponsePacket(
+                srcIp   = trustedDns.address,
+                dstIp   = srcIp,
+                srcPort = 53,
+                dstPort = srcPort,
+                payload = responseData
+            )
+            mutex.withLock { outputStream.write(response) }
 
-                if (destPort == 53) {
-                    analyzeDnsResponse(responseData, getCurrentSsid())
-                }
-
-                return buildUdpResponsePacket(
-                    srcIp = destIp.address,
-                    dstIp = srcIp,
-                    srcPort = destPort,
-                    dstPort = srcPort,
-                    payload = responseData
-                )
-            }
-
-            if (protocol == 6) { // TCP port 80
-                if (destPort == 80) {
-                    val tcpHeaderLen = ((data[ihl + 12].toInt() and 0xFF) shr 4) * 4
-                    val tcpPayloadOffset = ihl + tcpHeaderLen
-                    if (tcpPayloadOffset < length) {
-                        val payload = String(data.copyOfRange(tcpPayloadOffset, length))
-                        if (payload.contains("Host: ")) {
-                            val host = payload.substringAfter("Host: ").substringBefore("\r\n").trim()
-                            sslStripAnalyzer.analyze(host, getCurrentSsid())
-                        }
-                    }
-                }
-            }
         } catch (e: Exception) {
-            // timeout, etc.
+            // timeout DNS — la requête côté app timeout naturellement
         }
-        return null
+    }
+
+    private fun inspectHttp(data: ByteArray, length: Int, ihl: Int) {
+        try {
+            val tcpHeaderLen  = ((data[ihl + 12].toInt() and 0xFF) shr 4) * 4
+            val payloadOffset = ihl + tcpHeaderLen
+            if (payloadOffset >= length) return
+
+            val payload = String(data.copyOfRange(payloadOffset, length), Charsets.ISO_8859_1)
+            if (!payload.startsWith("GET") && !payload.startsWith("POST")) return
+
+            val host = payload.lines()
+                .firstOrNull { it.startsWith("Host:") }
+                ?.substringAfter("Host:")
+                ?.trim() ?: return
+
+            sslStripAnalyzer.analyze(host, getCurrentSsid())
+        } catch (e: Exception) { /* silent */ }
     }
 
     private fun analyzeDnsResponse(dnsData: ByteArray, ssid: String) {
         try {
             val msg = Message(dnsData)
-            val question = msg.getQuestion() ?: return
-            val domain = question.name.toString().removeSuffix(".")
+            if (!msg.header.getFlag(Flags.QR.toInt())) return // garder uniquement les réponses
+            val domain = msg.getQuestion()?.name?.toString()?.removeSuffix(".") ?: return
             msg.getSectionArray(Section.ANSWER).forEach { record ->
                 if (record is ARecord) {
                     val ip = record.address?.hostAddress ?: return@forEach
                     dnsAnalyzer.analyze(ip, domain, ssid, serviceScope)
                 }
             }
-        } catch (e: Exception) { /* parsing fail silencieux */ }
+        } catch (e: Exception) { /* silent */ }
     }
 
     private fun buildUdpResponsePacket(
@@ -228,10 +265,16 @@ class StopMiddlingMeVpnService : VpnService() {
 
 
     private fun getCurrentSsid(): String {
-        val info = wifiManager.connectionInfo
-        var ssid = info.ssid?.removeSurrounding("\"")
-        if (ssid == null || ssid == "<unknown ssid>") ssid = "Unknown_WiFi"
-        return ssid
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val capabilities = connectivityManager.getNetworkCapabilities(network)
+        
+        return if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
+            val info = wifiManager.connectionInfo
+            info.ssid?.removeSurrounding("\"")?.takeIf { it != "<unknown ssid>" } ?: "—"
+        } else {
+            "—" // Réseau mobile ou autre : on retourne "—" pour ignorer l'analyse locale
+        }
     }
 
     private fun createNotification(): android.app.Notification {

@@ -27,8 +27,8 @@ class ScoreEngine @Inject constructor(
         scope.launch {
             val now = System.currentTimeMillis()
 
-            // 1. Récupérer ou créer la session ouverte pour ce réseau
-            val session = getOrCreateSession(ssid, now)
+            // 1. Récupérer ou créer la session ouverte pour ce réseau (SÉCURISÉ)
+            val session = sessionRepo.createSession(ssid)
 
             // 2. Créer l'instance de signal
             val signal = SignalInstance(
@@ -69,10 +69,6 @@ class ScoreEngine @Inject constructor(
                 notifManager.notify(session.id, newLevel, type.description)
             }
         }
-    }
-
-    private suspend fun getOrCreateSession(ssid: String, now: Long): AlertSession {
-        return sessionRepo.getOpenSession(ssid) ?: sessionRepo.createSession(ssid)
     }
 
     private fun computeLevel(score: Int, hasStandalone: Boolean): AlertLevel {

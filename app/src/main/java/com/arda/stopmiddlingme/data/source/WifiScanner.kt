@@ -108,7 +108,8 @@ class WifiScanner @Inject constructor(
 
     @SuppressLint("MissingPermission")
     fun getCurrentSsid(): String? {
-        return getFullNetworkInfo().ssid.takeIf { it != "Non connecté" }
+        val info = getFullNetworkInfo()
+        return if (info.isConnected) info.ssid else null
     }
 
     @SuppressLint("MissingPermission")

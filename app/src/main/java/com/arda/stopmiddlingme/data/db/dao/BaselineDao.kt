@@ -16,7 +16,7 @@ interface BaselineDao {
     @Query("SELECT * FROM network_baseline")
     fun observeAll(): Flow<List<NetworkBaseline>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(baseline: NetworkBaseline)
 
     @Update
