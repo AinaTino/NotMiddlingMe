@@ -19,12 +19,16 @@ class ArpReader @Inject constructor() {
                     // ex    : 192.168.1.1 0x1 0x2 aa:bb:cc:dd:ee:ff * wlan0
                     val parts = line.trim().split("\\s+".toRegex())
                     if (parts.size >= 6 && parts[0] != "IP") {
-                        val mac = parts[3]
-                        if (mac != "00:00:00:00:00:00") { // entrées invalides
+                        val flags = parts[2]
+                        val mac = parts[3].uppercase()
+                        
+                        // 0x2 = ATF_COM (entrée complète/validée)
+                        // 0x0 = Incomplète (fantôme ou en cours)
+                        if (flags != "0x0" && mac != "00:00:00:00:00:00") {
                             entries.add(
                                 ArpEntry(
                                     ip = parts[0],
-                                    mac = mac.uppercase(),
+                                    mac = mac,
                                     device = parts[5]
                                 )
                             )

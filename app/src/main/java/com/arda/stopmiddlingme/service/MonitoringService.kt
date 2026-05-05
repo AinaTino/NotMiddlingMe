@@ -63,6 +63,10 @@ class MonitoringService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_ID, createPersistentNotification())
+        
+        // Initialisation immédiate des infos WiFi
+        updateCurrentWifiInfo()
+        
         startArpPolling()
         startWifiScanning()
         registerNetworkCallback()
@@ -132,33 +136,43 @@ class MonitoringService : Service() {
         connectivityManager.registerNetworkCallback(request, networkCallback!!)
     }
 
-    @SuppressLint("MissingPermission")
     private fun updateCurrentWifiInfo() {
-        val info = wifiManager.connectionInfo
-        currentSsid = info.ssid?.removeSurrounding("\"")
-        if (currentSsid == "<unknown ssid>") currentSsid = null
+        currentSsid = wifiScanner.getCurrentSsid()
     }
 
     private suspend fun ensureBaseline(ssid: String, arpTable: List<ArpEntry>) {
         val existing = baselineRepo.get(ssid)
         if (existing == null) {
             val gatewayIp = getGatewayIp() ?: return
-            val gatewayMac = arpTable.find { it.ip == gatewayIp }?.mac ?: return
+            
+            // Envoi d'un paquet UDP vers le port 7 du routeur pour peupler la table ARP
+            try {
+                val address = java.net.InetAddress.getByName(gatewayIp)
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(address, 7), 500) }
+            } catch (e: Exception) {}
+
+            val gatewayMac = arpReader.readArpTable().find { it.ip == gatewayIp }?.mac ?: return
             val fullInfo = wifiScanner.getFullNetworkInfo()
+            
+            // On autorise la création même si le SSID est générique, tant qu'on a la MAC du gateway
+            val finalSsid = if (ssid == "Inconnu" || ssid == "WiFi") {
+                "WiFi_${gatewayMac.takeLast(5).replace(":", "")}"
+            } else ssid
 
             baselineRepo.createIfAbsent(
-                ssid = ssid,
+                ssid = finalSsid,
                 bssid = wifiManager.connectionInfo.bssid ?: "",
                 gatewayIp = gatewayIp,
                 gatewayMac = gatewayMac,
-                dnsServers = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)?.dnsServers?.map { it.hostAddress ?: "" } ?: emptyList(),
+                dnsServers = connectivityManager.getLinkProperties(wifiScanner.getWifiNetwork())?.dnsServers?.map { it.hostAddress ?: "" } ?: emptyList(),
                 security = fullInfo.security
             )
         }
     }
 
     private fun getGatewayIp(): String? {
-        val lp = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)
+        val wifiNetwork = wifiScanner.getWifiNetwork() ?: connectivityManager.activeNetwork
+        val lp = connectivityManager.getLinkProperties(wifiNetwork)
         return lp?.routes?.find { it.isDefaultRoute }?.gateway?.hostAddress
     }
 
