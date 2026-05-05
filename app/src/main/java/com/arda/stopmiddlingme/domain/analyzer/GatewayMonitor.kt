@@ -12,6 +12,39 @@ class GatewayMonitor @Inject constructor(
     private val baselineRepo: BaselineRepository,
     private val scoreEngine: ScoreEngine
 ) {
+    private var lastLatencies = mutableListOf<Long>()
+    private val LATENCY_WINDOW = 10
+    private val SPIKE_THRESHOLD_MS = 35L
+    private val SPIKE_RATIO = 2.5
+
+    suspend fun checkLatency(gatewayIp: String, ssid: String) {
+        val start = System.currentTimeMillis()
+        val reached = try {
+            val address = java.net.InetAddress.getByName(gatewayIp)
+            address.isReachable(500)
+        } catch (e: Exception) { false }
+        
+        if (reached) {
+            val latency = System.currentTimeMillis() - start
+            analyzeLatency(latency, ssid)
+        }
+    }
+
+    private fun analyzeLatency(latency: Long, ssid: String) {
+        if (lastLatencies.size >= LATENCY_WINDOW) {
+            val avg = lastLatencies.average()
+            // Détection : latence > 35ms ET > 2.5x la moyenne habituelle
+            if (latency > SPIKE_THRESHOLD_MS && latency > avg * SPIKE_RATIO) {
+                scoreEngine.addSignal(
+                    ssid = ssid,
+                    type = SignalType.GATEWAY_LATENCY_SPIKE,
+                    detail = "Latence actuelle: ${latency}ms (Moyenne: ${avg.toInt()}ms)"
+                )
+            }
+            lastLatencies.removeAt(0)
+        }
+        lastLatencies.add(latency)
+    }
 
     suspend fun onNetworkChanged(lp: LinkProperties, ssid: String, isUnsolicited: Boolean) {
         val baseline = baselineRepo.get(ssid) ?: return

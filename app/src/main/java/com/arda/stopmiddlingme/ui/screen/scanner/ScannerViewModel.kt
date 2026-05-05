@@ -6,15 +6,13 @@ import com.arda.stopmiddlingme.data.source.ArpReader
 import com.arda.stopmiddlingme.data.source.WifiScanner
 import com.arda.stopmiddlingme.domain.model.LanDevice
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import java.net.InetAddress
 import java.net.NetworkInterface
 import javax.inject.Inject
+import java.util.concurrent.TimeUnit
 
 @HiltViewModel
 class ScannerViewModel @Inject constructor(
@@ -33,109 +31,136 @@ class ScannerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isScanning.value = true
             
-            val netInfo = wifiScanner.getFullNetworkInfo()
-            
-            // CRITIQUE : On récupère l'IP du WiFi, pas celle du VPN
-            val selfIp = netInfo.localIp.takeIf { it != "—" && !it.startsWith("10.0.0") } 
-                ?: getWifiIpAddress() 
-                ?: "—"
-            
-            val gatewayIp = netInfo.gatewayIp.takeIf { it != "—" }
-            
-            val reachedIps = mutableSetOf<String>()
-            if (selfIp != "—") reachedIps.add(selfIp)
-            if (gatewayIp != null && gatewayIp != "—") reachedIps.add(gatewayIp)
+            try {
+                val wifiNetwork = wifiScanner.getWifiNetwork()
+                val netInfo = wifiScanner.getFullNetworkInfo()
+                
+                // Détection de l'IP réelle du téléphone (on exclut la plage VPN 10.255.x.x)
+                val selfIp = listOfNotNull(netInfo.localIp, getWifiIpAddress())
+                    .find { it != "—" && it != "0.0.0.0" && !it.startsWith("10.255") } 
+                    ?: netInfo.localIp
+                
+                val gatewayIp = netInfo.gatewayIp.takeIf { it != "—" && it != "0.0.0.0" }
+                val reachedIps = mutableSetOf<String>()
+                
+                if (selfIp != "—" && selfIp != "0.0.0.0") reachedIps.add(selfIp)
+                if (gatewayIp != null) reachedIps.add(gatewayIp)
 
-            if (selfIp.contains(".")) {
-                val subnet = selfIp.substringBeforeLast(".")
-                // Scan par paquets pour ne pas saturer le WiFi
-                (1..254).chunked(50).forEach { chunk ->
-                    chunk.map { i ->
-                        async {
-                            val target = "$subnet.$i"
-                            if (target == selfIp) return@async
-                            try {
-                                val address = InetAddress.getByName(target)
-                                // 1. Essai Ping (500ms pour laisser le temps aux vieux appareils)
-                                if (address.isReachable(500)) {
-                                    synchronized(reachedIps) { reachedIps.add(target) }
-                                } else {
-                                    // 2. Scan de ports pour réveiller les PC/Phones
-                                    val ports = listOf(443, 445, 80, 139)
-                                    for (port in ports) {
-                                        try {
-                                            java.net.Socket().use { socket ->
-                                                socket.connect(java.net.InetSocketAddress(target, port), 300)
-                                                synchronized(reachedIps) { reachedIps.add(target) }
-                                                return@async 
-                                            }
-                                        } catch (e: java.net.ConnectException) {
-                                            // L'appareil a refusé : il est donc présent !
-                                            synchronized(reachedIps) { reachedIps.add(target) }
-                                            return@async
-                                        } catch (e: Exception) { }
-                                    }
-                                }
-                            } catch (e: Exception) { }
-                        }
-                    }.awaitAll()
-                }
-            }
-            
-            val arpEntries = arpReader.readArpTable()
-            val arpMap = arpEntries.associateBy { it.ip }
-            
-            // On ne garde que les IPs qui sont soit "Moi", soit la "Gateway", 
-            // soit qui ont une entrée MAC valide dans la table ARP.
-            // Cela élimine les "fantômes" qui répondent au scan mais n'ont pas de présence physique.
-            val lanDevices = (reachedIps + arpMap.keys)
-                .filter { it.contains(".") }
-                .mapNotNull { ip ->
-                    val arpEntry = arpMap[ip]
-                    val isSelf = ip == selfIp
-                    val isGateway = ip == gatewayIp
+                if (selfIp.contains(".") && selfIp.count { it == '.' } == 3) {
+                    val subnet = selfIp.substringBeforeLast(".")
                     
-                    // Si ce n'est ni moi, ni le routeur, et qu'on n'a pas de MAC : on ignore (fantôme)
-                    if (!isSelf && !isGateway && arpEntry == null) return@mapNotNull null
+                    // Scan agressif mais filtré pour réveiller la table ARP de l'OS
+                    (1..254).chunked(32).forEach { chunk ->
+                        chunk.map { i ->
+                            async {
+                                val target = "$subnet.$i"
+                                if (target == selfIp || target.startsWith("10.255")) return@async
+                                
+                                // 1. UDP Poke (Fire & Forget)
+                                try {
+                                    java.net.DatagramSocket().use { ds ->
+                                        wifiNetwork?.bindSocket(ds)
+                                        val packet = java.net.DatagramPacket(ByteArray(0), 0, InetAddress.getByName(target), 7)
+                                        ds.send(packet)
+                                    }
+                                } catch (e: Exception) { }
 
-                    LanDevice(
-                        ip = ip,
-                        mac = arpEntry?.mac ?: if (isSelf) "Moi" else "Inconnu", 
-                        manufacturer = null, 
-                        isGateway = isGateway,
-                        isSelf = isSelf
-                    )
-                }.sortedWith(compareByDescending<LanDevice> { it.isSelf }
-                    .thenByDescending { it.isGateway }
-                    .thenBy { 
-                        try { ipToLong(it.ip) } catch(e: Exception) { 0L }
+                                // 2. TCP Probe rapide (port 80)
+                                try {
+                                    java.net.Socket().use { socket ->
+                                        wifiNetwork?.bindSocket(socket)
+                                        socket.connect(java.net.InetSocketAddress(target, 80), 150)
+                                        synchronized(reachedIps) { reachedIps.add(target) }
+                                    }
+                                } catch (e: Exception) { }
+
+                                // 3. Ping natif
+                                if (pingIpNative(target)) {
+                                    synchronized(reachedIps) { reachedIps.add(target) }
+                                }
+                            }
+                        }.awaitAll()
+                        delay(20) // Petit délai entre les chunks pour la stabilité
                     }
-                )
-            
-            _devices.value = lanDevices
-            _isScanning.value = false
+                }
+                
+                // On laisse un peu de temps à la table ARP pour se stabiliser après les pings
+                delay(800)
+                
+                val wifiInterface = wifiScanner.getWifiInterfaceName()
+                val arpEntries = arpReader.readArpTable()
+                
+                // On filtre les entrées ARP pour ne garder que celles liées au WiFi/Ethernet réel
+                val arpMap = arpEntries
+                    .filter { entry ->
+                        wifiInterface == null || 
+                        entry.device == wifiInterface || 
+                        entry.device.contains("wlan") || 
+                        entry.device.contains("eth")
+                    }
+                    .associateBy { it.ip }
+                
+                // RÈGLE : Sur Android 10+, la table ARP est restreinte.
+                // On affiche les IPs qui ont répondu au scan (reachedIps) 
+                // ET celles présentes dans l'ARP (si dispo).
+                val finalIps = (arpMap.keys + reachedIps)
+                    .filter { it.contains(".") && it != "0.0.0.0" }
+                    .distinct()
+                
+                val lanDevices = finalIps
+                    .map { ip ->
+                        val arpEntry = arpMap[ip]
+                        val isSelf = (ip == selfIp)
+                        val isGateway = (ip == gatewayIp)
+                        
+                        LanDevice(
+                            ip = ip,
+                            mac = arpEntry?.mac ?: if (isSelf) "Moi" else "Inconnu",
+                            manufacturer = null,
+                            isGateway = isGateway,
+                            isSelf = isSelf
+                        )
+                    }.sortedWith(compareByDescending<LanDevice> { it.isSelf }
+                        .thenByDescending { it.isGateway }
+                        .thenBy { ipToLong(it.ip) }
+                    )
+                
+                _devices.value = lanDevices
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isScanning.value = false
+            }
         }
+    }
+
+    private suspend fun pingIpNative(ipAddress: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Utilisation du ping système qui est plus fiable que isReachable()
+            val process = Runtime.getRuntime().exec("ping -c 1 -W 1 $ipAddress")
+            val completed = process.waitFor(800, TimeUnit.MILLISECONDS)
+            completed && process.exitValue() == 0
+        } catch (e: Exception) { false }
     }
 
     private fun getWifiIpAddress(): String? {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            for (intf in interfaces.asSequence()) {
-                if (!intf.isUp || intf.isLoopback || intf.name.contains("tun")) continue
-                if (intf.name.contains("wlan") || intf.name.contains("eth")) {
-                    for (addr in intf.inetAddresses.asSequence()) {
-                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                            return addr.hostAddress
-                        }
-                    }
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            for (intf in interfaces) {
+                if (!intf.isUp || intf.isLoopback || intf.name.contains("tun") || intf.name.contains("vpn")) continue
+                for (addr in intf.inetAddresses) {
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) return addr.hostAddress
                 }
             }
-        } catch (ex: Exception) { }
+        } catch (e: Exception) { }
         return null
     }
 
     private fun ipToLong(ip: String): Long {
-        val parts = ip.split(".")
-        return (parts[0].toLong() shl 24) + (parts[1].toLong() shl 16) + (parts[2].toLong() shl 8) + parts[3].toLong()
+        return try {
+            val parts = ip.split(".")
+            if (parts.size != 4) return 0L
+            (parts[0].toLong() shl 24) + (parts[1].toLong() shl 16) + (parts[2].toLong() shl 8) + parts[3].toLong()
+        } catch (e: Exception) { 0L }
     }
 }

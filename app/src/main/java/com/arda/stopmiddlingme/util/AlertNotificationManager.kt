@@ -33,22 +33,29 @@ class AlertNotificationManager @Inject constructor(
     }
 
     fun notify(sessionId: String, level: AlertLevel, description: String) {
+        android.util.Log.d("AlertNotif", "Demande de notification : niveau=$level, desc=$description")
+        
         val title = when (level) {
             AlertLevel.CRITIQUE -> "⚠️ ATTAQUE DÉTECTÉE"
             AlertLevel.WARNING -> "⚠️ Menace probable"
             AlertLevel.SUSPECT -> "🔍 Activité suspecte"
-            else -> return
+            else -> {
+                android.util.Log.d("AlertNotif", "Niveau SAFE ou inconnu, pas de notification")
+                return
+            }
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // À remplacer par une icône du projet
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(description)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .build()
 
         notificationManager.notify(sessionId.hashCode(), notification)
+        android.util.Log.i("AlertNotif", "Notification envoyée pour session ${sessionId.take(8)}")
     }
 
     companion object {

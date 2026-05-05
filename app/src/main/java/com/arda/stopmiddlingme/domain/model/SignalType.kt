@@ -32,18 +32,24 @@ enum class SignalType(
     // ── DHCP / Gateway ───────────────────────────────────────────────────────
     // LinkProperties change SANS onAvailable() préalable → DHCP non sollicité
     GATEWAY_CHANGE_UNSOLICITED(
-        poids = 3,
-        standalone = false,
-        decaySeconds = 60,
+        poids = 6,
+        standalone = true,
+        decaySeconds = 300,
         description = "Gateway changée sans événement de connexion"
     ),
-    // Gateway différente de la baseline APRÈS connexion normale — signal faible,
-    // cause légitime possible (admin a changé le routeur), ne vaut rien seul
+    // Gateway différente de la baseline APRÈS connexion normale
     GATEWAY_IP_CHANGED(
-        poids = 2,
+        poids = 4,
         standalone = false,
-        decaySeconds = 60,
+        decaySeconds = 300,
         description = "IP de gateway différente de la baseline"
+    ),
+    // Latence inhabituelle vers la gateway (indique un MITM qui retransmet)
+    GATEWAY_LATENCY_SPIKE(
+        poids = 3,
+        standalone = false,
+        decaySeconds = 120,
+        description = "Latence réseau suspecte vers la passerelle"
     ),
     // DNS configuré = IP privée jamais vue en baseline
     DNS_SERVER_UNKNOWN(

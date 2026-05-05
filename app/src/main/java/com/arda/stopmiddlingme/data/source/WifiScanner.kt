@@ -84,52 +84,45 @@ class WifiScanner @Inject constructor(
 
         try {
             val wifiNetwork = getWifiNetwork()
-            val lp = connectivityManager.getLinkProperties(wifiNetwork)
-            val capabilities = connectivityManager.getNetworkCapabilities(wifiNetwork)
-
-            // 1. IP Locale (via LinkProperties du réseau WiFi spécifiquement)
-            localIp = lp?.linkAddresses?.find { it.address is java.net.Inet4Address }?.address?.hostAddress 
-                ?: getWifiIpFallback() 
-                ?: "—"
-
-            // 2. Gateway
-            gatewayIp = lp?.routes?.find { it.isDefaultRoute && it.gateway != null }?.gateway?.hostAddress ?: "—"
-            if (gatewayIp == "—") {
-                val dhcp = wifiManager.dhcpInfo
-                if (dhcp != null && dhcp.gateway != 0) {
-                    gatewayIp = Formatter.formatIpAddress(dhcp.gateway)
+            val caps = if (wifiNetwork != null) connectivityManager.getNetworkCapabilities(wifiNetwork) else null
+            
+            // Backup via DhcpInfo : TRÈS FIABLE même sous VPN
+            val dhcp = wifiManager.dhcpInfo
+            if (dhcp != null) {
+                if (dhcp.ipAddress != 0) {
+                    localIp = intToIp(dhcp.ipAddress)
+                }
+                if (dhcp.gateway != 0) {
+                    gatewayIp = intToIp(dhcp.gateway)
                 }
             }
 
-            // 3. SSID / BSSID
+            // Si DhcpInfo a échoué, on tente LinkProperties
+            if (localIp == "—" || localIp == "0.0.0.0") {
+                val lp = connectivityManager.getLinkProperties(wifiNetwork ?: connectivityManager.activeNetwork)
+                localIp = lp?.linkAddresses?.find { it.address is java.net.Inet4Address }?.address?.hostAddress ?: "—"
+                if (gatewayIp == "—") {
+                    gatewayIp = lp?.routes?.find { it.isDefaultRoute && it.gateway != null }?.gateway?.hostAddress ?: "—"
+                }
+            }
+
+            // SSID / BSSID
             val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                capabilities?.transportInfo as? WifiInfo
+                caps?.transportInfo as? WifiInfo
             } else {
                 @Suppress("DEPRECATION")
                 wifiManager.connectionInfo
             }
 
             if (wifiInfo != null) {
-                ssid = wifiInfo.ssid?.removeSurrounding("\"")?.takeIf { it != "<unknown ssid>" } ?: "WiFi"
+                ssid = wifiInfo.ssid?.removeSurrounding("\"")?.takeIf { it != "<unknown ssid>" } ?: "Inconnu"
                 bssid = wifiInfo.bssid ?: "—"
                 isConnected = true
             }
             
-            if (ssid == "WiFi" || ssid == "Inconnu") {
-                @Suppress("DEPRECATION")
-                val info = wifiManager.connectionInfo
-                val backupSsid = info.ssid?.removeSurrounding("\"")
-                if (backupSsid != null && backupSsid != "<unknown ssid>") ssid = backupSsid
-                if (bssid == "—") bssid = info.bssid ?: "—"
-            }
-
-            // 4. Sécurité
-            if (bssid != "—") {
-                try {
-                    security = wifiManager.scanResults.find { it.BSSID == bssid }?.let { 
-                        parseCapabilities(it.capabilities) 
-                    } ?: "WPA2"
-                } catch (e: Exception) {}
+            // Fallback SSID si masqué (ex: GPS désactivé)
+            if ((ssid == "Inconnu" || ssid == "WiFi") && bssid != "—" && bssid != "02:00:00:00:00:00") {
+                ssid = "Réseau_${bssid.replace(":", "").takeLast(4).uppercase()}"
             }
 
         } catch (e: Exception) {
@@ -144,8 +137,22 @@ class WifiScanner @Inject constructor(
             gatewayMac = "—",
             dnsServers = emptyList(),
             security = security,
-            isConnected = isConnected || localIp != "—"
+            isConnected = isConnected || (localIp != "—" && localIp != "0.0.0.0")
         )
+    }
+
+    private fun intToIp(i: Int): String {
+        return Formatter.formatIpAddress(i)
+    }
+
+    fun getWifiInterfaceName(): String? {
+        return try {
+            val network = getWifiNetwork()
+            val lp = if (network != null) connectivityManager.getLinkProperties(network) else null
+            lp?.interfaceName ?: NetworkInterface.getNetworkInterfaces()?.asSequence()?.find { 
+                it.isUp && !it.isLoopback && (it.name.contains("wlan") || it.name.contains("eth"))
+            }?.name
+        } catch (e: Exception) { null }
     }
 
     private fun getWifiIpFallback(): String? {

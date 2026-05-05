@@ -32,6 +32,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import android.content.pm.ServiceInfo
+import android.os.Build
 
 @AndroidEntryPoint
 class MonitoringService : Service() {
@@ -62,7 +64,12 @@ class MonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIF_ID, createPersistentNotification())
+        val notification = createPersistentNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
         
         // Initialisation immédiate des infos WiFi
         updateCurrentWifiInfo()
@@ -79,11 +86,18 @@ class MonitoringService : Service() {
                 val ssid = currentSsid
                 if (ssid != null) {
                     val table = arpReader.readArpTable()
+                    val gatewayIp = getGatewayIp()
                     
-                    // S'assurer qu'une baseline existe (simplifié)
+                    // S'assurer qu'une baseline existe
                     ensureBaseline(ssid, table)
                     
+                    // Analyse ARP traditionnelle (limitée sur Android 10+)
                     arpAnalyzer.analyze(table, ssid)
+
+                    // Analyse de latence vers la gateway (efficace sur Android 10+)
+                    if (gatewayIp != null) {
+                        gatewayMonitor.checkLatency(gatewayIp, ssid)
+                    }
                 }
                 delay(10_000L)
             }
@@ -110,18 +124,16 @@ class MonitoringService : Service() {
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
 
-            // REMPLACE ton override onAvailable existant par :
             override fun onAvailable(network: Network) {
                 isConnectedToWifi = true
-                justConnected = true      // ← ajoute cette ligne
+                justConnected = true
                 updateCurrentWifiInfo()
             }
 
-            // REMPLACE ton override onLinkPropertiesChanged existant par :
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 val ssid = currentSsid ?: return
-                val unsolicited = !justConnected   // ← calcule avant de reset
-                justConnected = false              // ← reset immédiatement
+                val unsolicited = !justConnected
+                justConnected = false
                 scope.launch {
                     gatewayMonitor.onNetworkChanged(linkProperties, ssid, isUnsolicited = unsolicited)
                 }
@@ -151,17 +163,23 @@ class MonitoringService : Service() {
                 java.net.Socket().use { it.connect(java.net.InetSocketAddress(address, 7), 500) }
             } catch (e: Exception) {}
 
-            val gatewayMac = arpReader.readArpTable().find { it.ip == gatewayIp }?.mac ?: return
+            // Sur Android 10+, on n'aura souvent PAS la MAC ici. On met un placeholder si besoin.
+            val gatewayMac = arpReader.readArpTable().find { it.ip == gatewayIp }?.mac ?: "02:00:00:00:00:00"
             val fullInfo = wifiScanner.getFullNetworkInfo()
             
-            // On autorise la création même si le SSID est générique, tant qu'on a la MAC du gateway
-            val finalSsid = if (ssid == "Inconnu" || ssid == "WiFi") {
-                "WiFi_${gatewayMac.takeLast(5).replace(":", "")}"
+            // Fallback SSID plus robuste
+            val finalSsid = if (ssid == "Inconnu" || ssid == "WiFi" || ssid == "<unknown ssid>") {
+                val suffix = if (gatewayMac != "02:00:00:00:00:00") {
+                    gatewayMac.takeLast(5).replace(":", "")
+                } else {
+                    fullInfo.bssid.takeLast(4).replace(":", "")
+                }
+                "WiFi_$suffix"
             } else ssid
 
             baselineRepo.createIfAbsent(
                 ssid = finalSsid,
-                bssid = wifiManager.connectionInfo.bssid ?: "",
+                bssid = fullInfo.bssid,
                 gatewayIp = gatewayIp,
                 gatewayMac = gatewayMac,
                 dnsServers = connectivityManager.getLinkProperties(wifiScanner.getWifiNetwork())?.dnsServers?.map { it.hostAddress ?: "" } ?: emptyList(),

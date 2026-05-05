@@ -27,6 +27,7 @@ object AppModule {
             AppDatabase::class.java,
             "stopmiddlingme.db"
         )
+            .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(MIGRATION_1_2)
             .build()
 

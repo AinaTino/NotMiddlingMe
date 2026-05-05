@@ -43,7 +43,8 @@ class DashboardViewModel @Inject constructor(
             emit(wifiScanner.getFullNetworkInfo())
             delay(5000) // Rafraîchir toutes les 5s pour plus de réactivité
         }
-    }.stateIn(
+    }.flowOn(kotlinx.coroutines.Dispatchers.IO)
+    .stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         NetworkInfo(
@@ -92,16 +93,27 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun startVpn() {
-        val intent = Intent(context, StopMiddlingMeVpnService::class.java)
-        context.startForegroundService(intent)
+        // Lancement du monitoring local (ARP, Passerelle, Rogue AP)
+        val monitorIntent = Intent(context, MonitoringService::class.java)
+        context.startForegroundService(monitorIntent)
+
+        // Lancement du VPN (DNS, SSL Strip)
+        val vpnIntent = Intent(context, StopMiddlingMeVpnService::class.java)
+        context.startForegroundService(vpnIntent)
+        
         _isVpnRunning.value = true
     }
 
     fun stopVpn() {
-        val intent = Intent(context, StopMiddlingMeVpnService::class.java).apply {
+        // Arrêt du monitoring local
+        val monitorIntent = Intent(context, MonitoringService::class.java)
+        context.stopService(monitorIntent)
+
+        // Arrêt du VPN
+        val vpnIntent = Intent(context, StopMiddlingMeVpnService::class.java).apply {
             action = StopMiddlingMeVpnService.ACTION_STOP
         }
-        context.startService(intent)
+        context.startService(vpnIntent)
         _isVpnRunning.value = false
     }
 

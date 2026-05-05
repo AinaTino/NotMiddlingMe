@@ -13,21 +13,13 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.arda.stopmiddlingme.MainActivity
 import com.arda.stopmiddlingme.data.datastore.SettingsDataStore
-import com.arda.stopmiddlingme.domain.analyzer.DnsAnalyzer
 import com.arda.stopmiddlingme.domain.analyzer.SslStripAnalyzer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import org.xbill.DNS.ARecord
-import org.xbill.DNS.Flags
-import org.xbill.DNS.Message
-import org.xbill.DNS.Section
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
-import java.nio.ByteBuffer
 import javax.inject.Inject
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
 @AndroidEntryPoint
 class StopMiddlingMeVpnService : VpnService() {
 
-    @Inject lateinit var dnsAnalyzer: DnsAnalyzer
+    // @Inject lateinit var dnsAnalyzer: DnsAnalyzer  // Désactivé : analyse DNS via VPN TUN causait des timeouts
     @Inject lateinit var sslStripAnalyzer: SslStripAnalyzer
     @Inject lateinit var settingsDataStore: SettingsDataStore
     
@@ -78,9 +70,12 @@ class StopMiddlingMeVpnService : VpnService() {
         try {
             vpnInterface = Builder()
                 .setSession("StopMiddlingMe")
-                .addAddress("10.0.0.2", 32)
+                .addAddress("10.255.0.1", 32)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer(settingsDataStore.dnsServer.first())
+                // IMPORTANT : Exclure l'application elle-même du VPN
+                // Cela permet au scanner de fonctionner sur le WiFi réel sans interférence
+                .addDisallowedApplication(packageName)
                 .setBlocking(false)
                 .establish() ?: return
 
@@ -110,12 +105,14 @@ class StopMiddlingMeVpnService : VpnService() {
                                (data[ihl + 3].toInt() and 0xFF)
 
                 when {
-                    // DNS UDP — intercepter, forwarder, analyser la réponse, réinjecter
+                    // DNS UDP — LAISSER PASSER le paquet original vers le serveur DNS
+                    // On analyse la réponse via PacketCapture passive (LinkProperties)
+                    // Capturer et modifier le DNS cause des timeouts
                     protocol == 17 && dstPort == 53 -> {
-                        scope.launch {
-                            handleDns(data, length, ihl, outputStream, outputMutex)
-                        }
-                        // NE PAS réécrire la requête originale — on gère la réponse dans handleDns
+                        // Laisser passer intact — le serveur DNS répondra hors du tunnel
+                        outputMutex.withLock { outputStream.write(data, 0, length) }
+                        // Optionnel : logger pour debug
+                        // analyzeOutboundDnsQuery(data, length, ihl)
                     }
 
                     // HTTP TCP port 80 — analyser SSL Strip, laisser passer intact
@@ -141,49 +138,13 @@ class StopMiddlingMeVpnService : VpnService() {
         }
     }
 
-    private suspend fun handleDns(
-        data: ByteArray,
-        length: Int,
-        ihl: Int,
-        outputStream: FileOutputStream,
-        mutex: Mutex
-    ) {
-        try {
-            val srcIp   = data.copyOfRange(12, 16)
-            val srcPort = ((data[ihl].toInt() and 0xFF) shl 8) or
-                           (data[ihl + 1].toInt() and 0xFF)
-            val dnsPayload = data.copyOfRange(ihl + 8, length)
-
-            val socket = DatagramSocket()
-            protect(socket)
-            socket.soTimeout = 3000
-            val trustedDns = InetAddress.getByName("1.1.1.1")
-            socket.send(DatagramPacket(dnsPayload, dnsPayload.size, trustedDns, 53))
-
-            val responseBuffer = ByteArray(65535)
-            val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
-            socket.receive(responsePacket)
-            socket.close()
-
-            val responseData = responsePacket.data.copyOf(responsePacket.length)
-
-            // Analyser la RÉPONSE — contient les IPs résolues
-            analyzeDnsResponse(responseData, getCurrentSsid())
-
-            // Réinjecter la réponse dans le TUN
-            val response = buildUdpResponsePacket(
-                srcIp   = trustedDns.address,
-                dstIp   = srcIp,
-                srcPort = 53,
-                dstPort = srcPort,
-                payload = responseData
-            )
-            mutex.withLock { outputStream.write(response) }
-
-        } catch (e: Exception) {
-            // timeout DNS — la requête côté app timeout naturellement
-        }
-    }
+    // ──────────────────────────────────────────────────────────────────────────────
+    // NOTE: DNS analysis anciennement via VPNService TUN a été DÉSACTIVÉ car
+    // il causait des timeouts sur les requêtes des apps (la requête était mangée).
+    // La détection DNS spoofing se fait maintenant via :
+    // 1. Analyse passive des changements LinkProperties (DNS serveurs)
+    // 2. Analyse passivedu trafic outbound (SNI, Host headers)
+    // ──────────────────────────────────────────────────────────────────────────────
 
     private fun inspectHttp(data: ByteArray, length: Int, ihl: Int) {
         try {
@@ -201,66 +162,6 @@ class StopMiddlingMeVpnService : VpnService() {
 
             sslStripAnalyzer.analyze(host, getCurrentSsid())
         } catch (e: Exception) { /* silent */ }
-    }
-
-    private fun analyzeDnsResponse(dnsData: ByteArray, ssid: String) {
-        try {
-            val msg = Message(dnsData)
-            if (!msg.header.getFlag(Flags.QR.toInt())) return // garder uniquement les réponses
-            val domain = msg.getQuestion()?.name?.toString()?.removeSuffix(".") ?: return
-            msg.getSectionArray(Section.ANSWER).forEach { record ->
-                if (record is ARecord) {
-                    val ip = record.address?.hostAddress ?: return@forEach
-                    dnsAnalyzer.analyze(ip, domain, ssid, serviceScope)
-                }
-            }
-        } catch (e: Exception) { /* silent */ }
-    }
-
-    private fun buildUdpResponsePacket(
-        srcIp: ByteArray,
-        dstIp: ByteArray,
-        srcPort: Int,
-        dstPort: Int,
-        payload: ByteArray
-    ): ByteArray {
-        val totalLength = 28 + payload.size
-        val packet = ByteArray(totalLength)
-
-        // IP header
-        packet[0]  = 0x45.toByte()           // version=4, ihl=5
-        packet[1]  = 0x00
-        packet[2]  = (totalLength shr 8).toByte()
-        packet[3]  = (totalLength and 0xFF).toByte()
-        packet[8]  = 64                       // TTL
-        packet[9]  = 17                       // protocole UDP
-        System.arraycopy(srcIp, 0, packet, 12, 4)
-        System.arraycopy(dstIp, 0, packet, 16, 4)
-
-        // UDP header
-        packet[20] = (srcPort shr 8).toByte()
-        packet[21] = (srcPort and 0xFF).toByte()
-        packet[22] = (dstPort shr 8).toByte()
-        packet[23] = (dstPort and 0xFF).toByte()
-        val udpLen = 8 + payload.size
-        packet[24] = (udpLen shr 8).toByte()
-        packet[25] = (udpLen and 0xFF).toByte()
-
-        // Payload DNS
-        System.arraycopy(payload, 0, packet, 28, payload.size)
-
-        // IP checksum
-        var checksum = 0
-        for (i in 0 until 20 step 2) {
-            val word = ((packet[i].toInt() and 0xFF) shl 8) or (packet[i + 1].toInt() and 0xFF)
-            checksum += word
-        }
-        while (checksum shr 16 != 0) checksum = (checksum and 0xFFFF) + (checksum shr 16)
-        checksum = checksum.inv() and 0xFFFF
-        packet[10] = (checksum shr 8).toByte()
-        packet[11] = (checksum and 0xFF).toByte()
-
-        return packet
     }
 
 
