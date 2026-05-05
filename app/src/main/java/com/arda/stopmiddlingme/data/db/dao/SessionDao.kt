@@ -60,4 +60,7 @@ abstract class SessionDao {
 
     @Query("DELETE FROM alert_session WHERE id = :id")
     abstract suspend fun delete(id: String)
+
+    @Query("DELETE FROM alert_session")
+    abstract suspend fun deleteAll()
 }

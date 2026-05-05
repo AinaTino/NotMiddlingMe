@@ -46,20 +46,27 @@ class DashboardViewModel @Inject constructor(
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        NetworkInfo("—", "—", "—", "—", emptyList(), isConnected = false) // valeur initiale
+        NetworkInfo(
+            ssid = "—",
+            bssid = "—",
+            gatewayIp = "—",
+            gatewayMac = "—",
+            dnsServers = emptyList(),
+            isConnected = false
+        ) // valeur initiale
     )
 
     val currentSession: StateFlow<AlertSession?> = _currentSsid
         .flatMapLatest { ssid ->
             if (ssid != null) sessionRepo.observeOpenSession(ssid)
-            else flowOf(null)
+            else flowOf<AlertSession?>(null)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val activeSignals: StateFlow<List<SignalInstance>> = currentSession
         .flatMapLatest { session ->
             if (session != null) sessionRepo.observeSignals(session.id)
-            else flowOf(emptyList())
+            else flowOf<List<SignalInstance>>(emptyList())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

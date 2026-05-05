@@ -4,13 +4,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,7 +34,9 @@ fun HistoryScreen(
 
     HistoryContent(
         sessions = sessions,
-        onItemClick = onNavigateToDetail
+        onItemClick = onNavigateToDetail,
+        onDeleteSession = viewModel::deleteSession,
+        onClearHistory = viewModel::clearHistory
     )
 }
 
@@ -42,11 +44,24 @@ fun HistoryScreen(
 @Composable
 fun HistoryContent(
     sessions: List<AlertSession>,
-    onItemClick: (String) -> Unit
+    onItemClick: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
+    onClearHistory: () -> Unit
 ) {
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.history_title)) })
+            TopAppBar(
+                title = { Text(stringResource(R.string.history_title)) },
+                actions = {
+                    if (sessions.isNotEmpty()) {
+                        IconButton(onClick = { showDeleteAllDialog = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Effacer tout")
+                        }
+                    }
+                }
+            )
         }
     ) { padding ->
         if (sessions.isEmpty()) {
@@ -62,18 +77,47 @@ fun HistoryContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(sessions.sortedByDescending { it.openedAt }) { session ->
-                    HistoryItem(session, onClick = { onItemClick(session.id) })
+                items(sessions.sortedByDescending { it.openedAt }, key = { it.id }) { session ->
+                    HistoryItem(
+                        session = session,
+                        onClick = { onItemClick(session.id) },
+                        onDelete = { onDeleteSession(session.id) }
+                    )
                 }
             }
         }
+    }
+
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text("Effacer l'historique ?") },
+            text = { Text("Voulez-vous supprimer toutes les sessions d'alerte enregistrées ? Cette action est irréversible.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearHistory()
+                        showDeleteAllDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Effacer tout")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
     }
 }
 
 @Composable
 fun HistoryItem(
     session: AlertSession,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val dateStr = DateTimeUtils.formatDateTime(session.openedAt)
 
@@ -115,16 +159,29 @@ fun HistoryItem(
             }
 
             Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = stringResource(R.string.score_label, session.totalScore),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = statusColor
-                )
-                Text(
-                    text = session.finalLevel.name,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = statusColor
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = stringResource(R.string.score_label, session.totalScore),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = statusColor
+                        )
+                        Text(
+                            text = session.finalLevel.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusColor
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Supprimer",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                        )
+                    }
+                }
             }
         }
     }
@@ -157,7 +214,9 @@ fun HistoryPreview() {
                     closedAt = System.currentTimeMillis() - 7150000
                 )
             ),
-            onItemClick = {}
+            onItemClick = {},
+            onDeleteSession = {},
+            onClearHistory = {}
         )
     }
 }

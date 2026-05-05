@@ -6,18 +6,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.arda.stopmiddlingme.R
+import com.arda.stopmiddlingme.data.db.entity.NetworkBaseline
 
 @Composable
 fun SettingsScreen(
@@ -27,6 +31,7 @@ fun SettingsScreen(
     val sslStripEnabled by viewModel.sslStripDetection.collectAsState()
     val notificationEnabled by viewModel.realTimeNotifications.collectAsState()
     val dnsServer by viewModel.dnsServer.collectAsState()
+    val baselines by viewModel.baselines.collectAsState()
 
     SettingsContent(
         dnsEnabled = dnsEnabled,
@@ -36,7 +41,10 @@ fun SettingsScreen(
         notificationEnabled = notificationEnabled,
         onNotificationToggle = viewModel::setRealTimeNotifications,
         dnsServer = dnsServer,
-        onDnsServerChange = viewModel::setDnsServer
+        onDnsServerChange = viewModel::setDnsServer,
+        baselines = baselines,
+        onToggleTrust = viewModel::toggleNetworkTrust,
+        onDeleteNetwork = viewModel::deleteNetwork
     )
 }
 
@@ -50,7 +58,10 @@ fun SettingsContent(
     notificationEnabled: Boolean,
     onNotificationToggle: (Boolean) -> Unit,
     dnsServer: String,
-    onDnsServerChange: (String) -> Unit
+    onDnsServerChange: (String) -> Unit,
+    baselines: List<NetworkBaseline>,
+    onToggleTrust: (String, Boolean) -> Unit,
+    onDeleteNetwork: (String) -> Unit
 ) {
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showDnsDialog by remember { mutableStateOf(false) }
@@ -100,6 +111,26 @@ fun SettingsContent(
                 modifier = Modifier.clickable { showDnsDialog = true }
             )
             
+            HorizontalDivider()
+
+            Text("Réseaux connus", style = MaterialTheme.typography.titleMedium)
+            
+            if (baselines.isEmpty()) {
+                Text(
+                    "Aucun réseau enregistré. Connectez-vous à un WiFi pour commencer le monitoring.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                baselines.forEach { baseline ->
+                    NetworkBaselineItem(
+                        baseline = baseline,
+                        onToggleTrust = { onToggleTrust(baseline.ssid, baseline.isTrusted) },
+                        onDelete = { onDeleteNetwork(baseline.ssid) }
+                    )
+                }
+            }
+
             HorizontalDivider()
 
             // Language Selection
@@ -224,6 +255,38 @@ fun DnsDialog(
     )
 }
 
+@Composable
+fun NetworkBaselineItem(
+    baseline: NetworkBaseline,
+    onToggleTrust: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (baseline.isTrusted) 
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) 
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(baseline.ssid, fontWeight = FontWeight.Bold)
+                Text("Gateway: ${baseline.gatewayMac}", style = MaterialTheme.typography.labelSmall)
+            }
+            Checkbox(checked = baseline.isTrusted, onCheckedChange = { onToggleTrust() })
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun SettingsPreview() {
@@ -236,7 +299,13 @@ fun SettingsPreview() {
             notificationEnabled = true,
             onNotificationToggle = {},
             dnsServer = "1.1.1.1",
-            onDnsServerChange = {}
+            onDnsServerChange = {},
+            baselines = listOf(
+                NetworkBaseline("Home_WiFi", "00:11:22:33:44:55", "192.168.1.1", "AA:BB:CC:DD:EE:FF", "1.1.1.1", "WPA2", System.currentTimeMillis(), true),
+                NetworkBaseline("Work_WiFi", "66:77:88:99:00:11", "10.0.0.1", "FF:EE:DD:CC:BB:AA", "8.8.8.8", "WPA3", System.currentTimeMillis(), false)
+            ),
+            onToggleTrust = { _, _ -> },
+            onDeleteNetwork = {}
         )
     }
 }

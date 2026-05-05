@@ -2,6 +2,7 @@ package com.arda.stopmiddlingme.domain.engine
 
 import com.arda.stopmiddlingme.data.db.entity.AlertSession
 import com.arda.stopmiddlingme.data.db.entity.SignalInstance
+import com.arda.stopmiddlingme.data.repository.BaselineRepository
 import com.arda.stopmiddlingme.data.repository.SessionRepository
 import com.arda.stopmiddlingme.domain.model.AlertLevel
 import com.arda.stopmiddlingme.domain.model.SessionStatus
@@ -18,6 +19,7 @@ import javax.inject.Singleton
 @Singleton
 class ScoreEngine @Inject constructor(
     private val sessionRepo: SessionRepository,
+    private val baselineRepo: BaselineRepository,
     private val notifManager: AlertNotificationManager
 ) {
 
@@ -25,6 +27,10 @@ class ScoreEngine @Inject constructor(
 
     fun addSignal(ssid: String, type: SignalType, detail: String) {
         scope.launch {
+            // 0. Vérifier si le réseau est de confiance
+            val baseline = baselineRepo.get(ssid)
+            if (baseline?.isTrusted == true) return@launch
+
             val now = System.currentTimeMillis()
 
             // 1. Récupérer ou créer la session ouverte pour ce réseau (SÉCURISÉ)

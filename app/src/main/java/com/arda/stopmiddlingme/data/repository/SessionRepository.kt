@@ -114,4 +114,12 @@ class SessionRepository @Inject constructor(
     suspend fun purgeExpiredSignals() {
         signalDao.deleteExpired(System.currentTimeMillis())
     }
+
+    suspend fun deleteSession(sessionId: String) {
+        sessionDao.delete(sessionId)
+    }
+
+    suspend fun clearAllSessions() {
+        sessionDao.deleteAll()
+    }
 }

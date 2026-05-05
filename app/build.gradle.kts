@@ -102,6 +102,8 @@ dependencies {
 
     // WorkManager — background monitoring
     implementation(libs.workmanager)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // DataStore — persistance des préférences (trusted networks, settings)
     implementation(libs.datastore.preferences)

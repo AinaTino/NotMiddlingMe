@@ -9,6 +9,7 @@ data class ArpEntry(
 data class NetworkInfo(
     val ssid: String,
     val bssid: String,
+    val localIp: String = "—",
     val gatewayIp: String,
     val gatewayMac: String,
     val dnsServers: List<String>,

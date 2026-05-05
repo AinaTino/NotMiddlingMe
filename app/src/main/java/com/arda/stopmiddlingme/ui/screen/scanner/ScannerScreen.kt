@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,16 +24,30 @@ import com.arda.stopmiddlingme.R
 import com.arda.stopmiddlingme.ui.theme.StopMiddlingMeTheme
 import com.arda.stopmiddlingme.domain.model.LanDevice
 
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.content.pm.PackageManager
+
 @Composable
 fun ScannerScreen(
     viewModel: ScannerViewModel = hiltViewModel()
 ) {
     val devices by viewModel.devices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
+    val context = LocalContext.current
+    
+    val hasLocationPermission = remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        )
+    }
 
     ScannerContent(
         devices = devices,
         isScanning = isScanning,
+        hasPermission = hasLocationPermission.value,
         onScanClick = { viewModel.scanNetwork() }
     )
 }
@@ -42,6 +57,7 @@ fun ScannerScreen(
 fun ScannerContent(
     devices: List<LanDevice>,
     isScanning: Boolean,
+    hasPermission: Boolean,
     onScanClick: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "scan")
@@ -77,73 +93,105 @@ fun ScannerContent(
                 .padding(padding)
         ) {
             AnimatedContent(
-                targetState = isScanning,
+                targetState = when {
+                    !hasPermission -> "no_permission"
+                    isScanning -> "scanning"
+                    devices.isEmpty() -> "empty"
+                    else -> "list"
+                },
                 transitionSpec = {
                     fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
                 },
                 label = "scanner_state"
-            ) { targetScanning ->
-                if (targetScanning) {
-                    // État de chargement au centre
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                stringResource(R.string.scanning_network),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                stringResource(R.string.identifying_devices),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                } else if (devices.isEmpty()) {
-                    // État vide
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.CellTower,
-                                contentDescription = null,
-                                modifier = Modifier.size(80.dp),
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(stringResource(R.string.no_devices), style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                stringResource(R.string.ensure_wifi),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Button(
-                                onClick = onScanClick,
-                                modifier = Modifier.padding(top = 24.dp),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Text(stringResource(R.string.rescan))
+            ) { state ->
+                when (state) {
+                    "scanning" -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    stringResource(R.string.scanning_network),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    stringResource(R.string.identifying_devices),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
                             }
                         }
                     }
-                } else {
-                    // Liste des appareils
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.devices_found, devices.size),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
+                    "no_permission" -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.LocationOff,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(80.dp),
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    "Localisation requise",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    "Android nécessite la permission de localisation pour scanner les réseaux WiFi et identifier les appareils.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
-                        items(devices) { device ->
-                            DeviceItem(device)
+                    }
+                    "empty" -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.CellTower,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(80.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(stringResource(R.string.no_devices), style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    stringResource(R.string.ensure_wifi),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Button(
+                                    onClick = onScanClick,
+                                    modifier = Modifier.padding(top = 24.dp),
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    Text(stringResource(R.string.rescan))
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                Text(
+                                    text = stringResource(R.string.devices_found, devices.size),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                            items(devices) { device ->
+                                DeviceItem(device)
+                            }
                         }
                     }
                 }
@@ -162,6 +210,7 @@ fun ScannerPreview() {
                 LanDevice("192.168.1.15", "AA:BB:CC:DD:EE:FF", "Google LLC", isGateway = false, isSelf = true)
             ),
             isScanning = false,
+            hasPermission = true,
             onScanClick = {}
         )
     }
@@ -180,14 +229,22 @@ fun DeviceItem(device: LanDevice) {
         ) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = if (device.isSelf) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                color = when {
+                    device.isSelf -> MaterialTheme.colorScheme.primary
+                    device.isGateway -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                },
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        if (device.isSelf) Icons.Default.Devices else Icons.Default.CellTower,
+                        imageVector = when {
+                            device.isSelf -> Icons.Default.Devices
+                            device.isGateway -> Icons.Default.Router
+                            else -> Icons.Default.CellTower
+                        },
                         contentDescription = null,
-                        tint = if (device.isSelf) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (device.isSelf || device.isGateway) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -202,6 +259,13 @@ fun DeviceItem(device: LanDevice) {
                             text = " (${stringResource(R.string.you)})",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    } else if (device.isGateway) {
+                        Text(
+                            text = " (Gateway)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.padding(start = 4.dp)
                         )
                     }
