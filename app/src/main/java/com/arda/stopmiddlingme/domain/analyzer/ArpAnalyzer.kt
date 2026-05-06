@@ -77,18 +77,17 @@ class ArpAnalyzer @Inject constructor(
     }
 
     private fun checkMacDuplicates(table: List<ArpEntry>, ssid: String) {
-        val duplicates = table.groupBy { it.mac }
-            .filter { (_, entries) ->
-                entries.size > 1 && entries.none { e -> e.mac == "00:00:00:00:00:00" }
+        table.groupBy { it.mac }
+            .filter { (mac, entries) ->
+                mac != "00:00:00:00:00:00" && entries.size > 1
             }
-
-        duplicates.forEach { (mac, entries) ->
-            val ips = entries.joinToString(", ") { it.ip }
-            scoreEngine.addSignal(
-                ssid = ssid,
-                type = SignalType.ARP_MAC_DUPLICATE,
-                detail = "MAC $mac répond pour : $ips (ARP Spoofing probable)"
-            )
-        }
+            .forEach { (mac, entries) ->
+                val ips = entries.map { entry -> entry.ip }.joinToString(", ")
+                scoreEngine.addSignal(
+                    ssid   = ssid,
+                    type   = SignalType.ARP_MAC_DUPLICATE,
+                    detail = "MAC $mac répond pour : $ips (ARP Spoofing probable)"
+                )
+            }
     }
 }

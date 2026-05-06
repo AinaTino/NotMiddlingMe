@@ -9,10 +9,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.net.ConnectException
 import java.net.InetAddress
 import java.net.NetworkInterface
-import javax.inject.Inject
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
 @HiltViewModel
 class ScannerViewModel @Inject constructor(
@@ -26,106 +27,148 @@ class ScannerViewModel @Inject constructor(
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning
 
+    // Ports courants — le refus (ConnectException) indique que l'hôte existe
+    private val probePorts = listOf(80, 443, 22, 53, 8080, 8443, 445, 139, 5000, 7)
+
     fun scanNetwork() {
         if (_isScanning.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isScanning.value = true
-            
+
             try {
                 val wifiNetwork = wifiScanner.getWifiNetwork()
-                val netInfo = wifiScanner.getFullNetworkInfo()
-                
-                // Détection de l'IP réelle du téléphone (on exclut la plage VPN 10.255.x.x)
+                val netInfo     = wifiScanner.getFullNetworkInfo()
+
+                // IP réelle du téléphone (exclure plage VPN 10.255.x.x)
                 val selfIp = listOfNotNull(netInfo.localIp, getWifiIpAddress())
-                    .find { it != "—" && it != "0.0.0.0" && !it.startsWith("10.255") } 
+                    .find { ip -> ip != "—" && ip != "0.0.0.0" && !ip.startsWith("10.255") }
                     ?: netInfo.localIp
-                
-                val gatewayIp = netInfo.gatewayIp.takeIf { it != "—" && it != "0.0.0.0" }
+
+                val gatewayIp  = netInfo.gatewayIp.takeIf { it != "—" && it != "0.0.0.0" }
                 val reachedIps = mutableSetOf<String>()
-                
+
                 if (selfIp != "—" && selfIp != "0.0.0.0") reachedIps.add(selfIp)
                 if (gatewayIp != null) reachedIps.add(gatewayIp)
 
                 if (selfIp.contains(".") && selfIp.count { it == '.' } == 3) {
                     val subnet = selfIp.substringBeforeLast(".")
-                    
-                    // Scan agressif mais filtré pour réveiller la table ARP de l'OS
+
+                    // ──────────────────────────────────────────────────────────
+                    // Scan en chunks parallèles de 32 IPs
+                    // Pour chaque IP cible, trois vecteurs de découverte :
+                    //
+                    // 1. UDP Fire & Forget (port 7 echo)
+                    //    → force l'OS à résoudre l'ARP, même sans réponse UDP
+                    //
+                    // 2. TCP multi-ports avec ConnectException catching
+                    //    → ConnectException = "Connection refused" = hôte UP
+                    //    → SocketTimeoutException = hôte DOWN ou filtré
+                    //    C'est la correction de Cause 3 : on ne détecte plus
+                    //    uniquement les hôtes qui acceptent la connexion (port
+                    //    ouvert), mais aussi ceux qui la refusent (port fermé
+                    //    mais hôte joignable).
+                    //
+                    // 3. Ping ICMP natif
+                    //    → le plus fiable, marche sur presque tous les appareils
+                    // ──────────────────────────────────────────────────────────
                     (1..254).chunked(32).forEach { chunk ->
                         chunk.map { i ->
                             async {
                                 val target = "$subnet.$i"
                                 if (target == selfIp || target.startsWith("10.255")) return@async
-                                
-                                // 1. UDP Poke (Fire & Forget)
+
+                                // ── 1. UDP Poke ──────────────────────────────
                                 try {
                                     java.net.DatagramSocket().use { ds ->
                                         wifiNetwork?.bindSocket(ds)
-                                        val packet = java.net.DatagramPacket(ByteArray(0), 0, InetAddress.getByName(target), 7)
-                                        ds.send(packet)
+                                        ds.send(
+                                            java.net.DatagramPacket(
+                                                ByteArray(1), 1,
+                                                InetAddress.getByName(target), 7
+                                            )
+                                        )
                                     }
-                                } catch (e: Exception) { }
+                                } catch (_: Exception) {}
 
-                                // 2. TCP Probe rapide (port 80)
-                                try {
-                                    java.net.Socket().use { socket ->
-                                        wifiNetwork?.bindSocket(socket)
-                                        socket.connect(java.net.InetSocketAddress(target, 80), 150)
+                                // ── 2. TCP multi-ports ───────────────────────
+                                // ConnectException = port fermé MAIS hôte joignable → l'ajouter
+                                // Toute autre exception = hôte injoignable → ignorer
+                                var found = false
+                                for (port in probePorts) {
+                                    if (found) break
+                                    try {
+                                        java.net.Socket().use { socket ->
+                                            wifiNetwork?.bindSocket(socket)
+                                            socket.connect(
+                                                java.net.InetSocketAddress(target, port),
+                                                120
+                                            )
+                                            // Connexion acceptée = port ouvert = hôte UP
+                                            synchronized(reachedIps) { reachedIps.add(target) }
+                                            found = true
+                                        }
+                                    } catch (e: ConnectException) {
+                                        // "Connection refused" = port fermé MAIS hôte UP
+                                        // C'est la clé : on détecte l'hôte même sans port ouvert
                                         synchronized(reachedIps) { reachedIps.add(target) }
+                                        found = true
+                                    } catch (_: Exception) {
+                                        // SocketTimeoutException, NetworkUnreachable, etc.
+                                        // = hôte vraiment injoignable → continuer vers port suivant
                                     }
-                                } catch (e: Exception) { }
+                                }
 
-                                // 3. Ping natif
-                                if (pingIpNative(target)) {
+                                // ── 3. Ping ICMP ─────────────────────────────
+                                if (!found && pingNative(target)) {
                                     synchronized(reachedIps) { reachedIps.add(target) }
                                 }
                             }
                         }.awaitAll()
-                        delay(20) // Petit délai entre les chunks pour la stabilité
+                        delay(15)
                     }
                 }
-                
-                // On laisse un peu de temps à la table ARP pour se stabiliser après les pings
+
+                // Laisser la table ARP se stabiliser
                 delay(800)
-                
+
                 val wifiInterface = wifiScanner.getWifiInterfaceName()
-                val arpEntries = arpReader.readArpTable()
-                
-                // On filtre les entrées ARP pour ne garder que celles liées au WiFi/Ethernet réel
+                val arpEntries    = arpReader.readArpTable()
+
+                // Filtrer les entrées ARP sur l'interface WiFi uniquement
                 val arpMap = arpEntries
                     .filter { entry ->
-                        wifiInterface == null || 
-                        entry.device == wifiInterface || 
-                        entry.device.contains("wlan") || 
-                        entry.device.contains("eth")
+                        wifiInterface == null ||
+                                entry.device == wifiInterface ||
+                                entry.device.contains("wlan") ||
+                                entry.device.contains("eth")
                     }
                     .associateBy { it.ip }
-                
-                // RÈGLE : Sur Android 10+, la table ARP est restreinte.
-                // On affiche les IPs qui ont répondu au scan (reachedIps) 
-                // ET celles présentes dans l'ARP (si dispo).
+
+                // Union : IPs de l'ARP + IPs qui ont répondu au scan
                 val finalIps = (arpMap.keys + reachedIps)
                     .filter { it.contains(".") && it != "0.0.0.0" }
                     .distinct()
-                
-                val lanDevices = finalIps
-                    .map { ip ->
-                        val arpEntry = arpMap[ip]
-                        val isSelf = (ip == selfIp)
-                        val isGateway = (ip == gatewayIp)
-                        
-                        LanDevice(
-                            ip = ip,
-                            mac = arpEntry?.mac ?: if (isSelf) "Moi" else "Inconnu",
-                            manufacturer = null,
-                            isGateway = isGateway,
-                            isSelf = isSelf
-                        )
-                    }.sortedWith(compareByDescending<LanDevice> { it.isSelf }
+
+                val lanDevices = finalIps.map { ip ->
+                    val arpEntry  = arpMap[ip]
+                    val isSelf    = (ip == selfIp)
+                    val isGateway = (ip == gatewayIp)
+
+                    LanDevice(
+                        ip           = ip,
+                        mac          = arpEntry?.mac ?: if (isSelf) "Moi" else "Inconnu",
+                        manufacturer = null,
+                        isGateway    = isGateway,
+                        isSelf       = isSelf
+                    )
+                }.sortedWith(
+                    compareByDescending<LanDevice> { it.isSelf }
                         .thenByDescending { it.isGateway }
                         .thenBy { ipToLong(it.ip) }
-                    )
-                
+                )
+
                 _devices.value = lanDevices
+
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -134,33 +177,32 @@ class ScannerViewModel @Inject constructor(
         }
     }
 
-    private suspend fun pingIpNative(ipAddress: String): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun pingNative(ip: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // Utilisation du ping système qui est plus fiable que isReachable()
-            val process = Runtime.getRuntime().exec("ping -c 1 -W 1 $ipAddress")
+            val process   = Runtime.getRuntime().exec("ping -c 1 -W 1 $ip")
             val completed = process.waitFor(800, TimeUnit.MILLISECONDS)
             completed && process.exitValue() == 0
-        } catch (e: Exception) { false }
+        } catch (_: Exception) { false }
     }
 
     private fun getWifiIpAddress(): String? {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
-            for (intf in interfaces) {
-                if (!intf.isUp || intf.isLoopback || intf.name.contains("tun") || intf.name.contains("vpn")) continue
-                for (addr in intf.inetAddresses) {
-                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) return addr.hostAddress
-                }
-            }
-        } catch (e: Exception) { }
-        return null
+        return try {
+            NetworkInterface.getNetworkInterfaces()?.toList()
+                ?.filter { it.isUp && !it.isLoopback }
+                ?.filter { !it.name.contains("tun") && !it.name.contains("vpn") }
+                ?.flatMap { it.inetAddresses.toList() }
+                ?.filterIsInstance<java.net.Inet4Address>()
+                ?.filterNot { it.isLoopbackAddress }
+                ?.firstOrNull()
+                ?.hostAddress
+        } catch (_: Exception) { null }
     }
 
     private fun ipToLong(ip: String): Long {
         return try {
             val parts = ip.split(".")
             if (parts.size != 4) return 0L
-            (parts[0].toLong() shl 24) + (parts[1].toLong() shl 16) + (parts[2].toLong() shl 8) + parts[3].toLong()
-        } catch (e: Exception) { 0L }
+            parts.fold(0L) { acc, part -> (acc shl 8) + part.toLong() }
+        } catch (_: Exception) { 0L }
     }
 }

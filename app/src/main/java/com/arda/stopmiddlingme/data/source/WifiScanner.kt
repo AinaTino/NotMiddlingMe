@@ -23,15 +23,20 @@ class WifiScanner @Inject constructor(
     private val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    fun getWifiNetwork(): Network? {
-        return try {
-            connectivityManager.allNetworks.find { 
-                val caps = connectivityManager.getNetworkCapabilities(it)
-                caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            }
-        } catch (e: Exception) {
-            null
+    fun getWifiNetwork(): android.net.Network? {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return cm.activeNetwork?.takeIf {
+            cm.getNetworkCapabilities(it)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
+    }
+
+    fun getWifiInterfaceName(): String? {
+        return try {
+            NetworkInterface.getNetworkInterfaces()?.toList()
+                ?.firstOrNull { it.isUp && !it.isLoopback && it.name.startsWith("wlan") }
+                ?.name
+        } catch (e: Exception) { null }
     }
 
     @SuppressLint("MissingPermission")
@@ -50,7 +55,7 @@ class WifiScanner @Inject constructor(
         }
     }
 
-    fun getCurrentSsid(): String? {
+/*    fun getCurrentSsid(): String? {
         return try {
             val network = getWifiNetwork()
             val capabilities = connectivityManager.getNetworkCapabilities(network ?: connectivityManager.activeNetwork)
@@ -72,7 +77,11 @@ class WifiScanner @Inject constructor(
         } catch (e: Exception) {
             null
         }
-    }
+    }*/
+fun getCurrentSsid(): String? {
+    val info = getFullNetworkInfo()
+    return if (info.isConnected && info.ssid != "—") info.ssid else null
+}
 
     fun getFullNetworkInfo(): NetworkInfo {
         var ssid = "Inconnu"
@@ -143,16 +152,6 @@ class WifiScanner @Inject constructor(
 
     private fun intToIp(i: Int): String {
         return Formatter.formatIpAddress(i)
-    }
-
-    fun getWifiInterfaceName(): String? {
-        return try {
-            val network = getWifiNetwork()
-            val lp = if (network != null) connectivityManager.getLinkProperties(network) else null
-            lp?.interfaceName ?: NetworkInterface.getNetworkInterfaces()?.asSequence()?.find { 
-                it.isUp && !it.isLoopback && (it.name.contains("wlan") || it.name.contains("eth"))
-            }?.name
-        } catch (e: Exception) { null }
     }
 
     private fun getWifiIpFallback(): String? {
